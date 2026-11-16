@@ -79,6 +79,7 @@ function search(q: string) {
 
 beforeEach(() => {
   vi.spyOn(console, "info").mockImplementation(() => {});
+  window.localStorage.clear();
 });
 
 afterEach(() => {
@@ -351,6 +352,68 @@ describe("App", () => {
     expect(screen.getByTestId("doc-text")).toHaveTextContent(TEXT);
     expect(screen.getByTestId("doc-text").querySelector("mark")).toBeNull();
     expect(screen.queryByRole("region", { name: "Edit passage" })).not.toBeInTheDocument();
+  });
+
+  it("runs phase 1 only when the Synonyms switch is off, remembers it, and re-runs on change", async () => {
+    mockApi({
+      "GET /search": (url) =>
+        json(
+          200,
+          searchBody({
+            total: 1,
+            results: [hit({})],
+            expansion:
+              url.searchParams.get("expand") === "true"
+                ? { status: "skipped", added: [], reason: "quoted phrase" }
+                : { status: "off", added: [] },
+          }),
+        ),
+    });
+    render(<App version="dev" />);
+    const toggle = screen.getByRole("switch", { name: "Synonyms" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(toggle).toHaveTextContent("On");
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(toggle).toHaveTextContent("Off");
+    expect(window.localStorage.getItem("redline.synonyms")).toBe("off");
+
+    search("liability");
+    expect(await screen.findByText(/is capped at six months/)).toBeInTheDocument();
+    expect(screen.queryByText(/expanding with synonyms/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/synonyms skipped/)).not.toBeInTheDocument();
+    const expands = () =>
+      calls("GET", "/search").map(([u]) =>
+        new URL(u, "http://localhost").searchParams.get("expand"),
+      );
+    expect(expands()).toEqual(["false"]);
+
+    // Turning it on while results are shown re-runs the query with both phases.
+    fireEvent.click(toggle);
+    expect(await screen.findByText("synonyms skipped: quoted phrase")).toBeInTheDocument();
+    expect(expands()).toEqual(["false", "false", "true"]);
+    expect(window.localStorage.getItem("redline.synonyms")).toBe("on");
+  });
+
+  it("starts with Synonyms off when that was saved, and on when storage is unavailable", () => {
+    mockApi({});
+    window.localStorage.setItem("redline.synonyms", "off");
+    const { unmount } = render(<App version="dev" />);
+    expect(screen.getByRole("switch", { name: "Synonyms" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    unmount();
+
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    render(<App version="dev" />);
+    expect(screen.getByRole("switch", { name: "Synonyms" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
   });
 
   it("opens the edit panel on a keyboard selection when Shift is released", async () => {

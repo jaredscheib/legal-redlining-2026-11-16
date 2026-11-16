@@ -53,14 +53,14 @@ export function mergeExpanded(
   return [...shown, ...extra];
 }
 
-/** Two-phase search: plain results at once, then synonym-expanded ones merged in. */
+/** Two-phase search: plain results at once, then (when `expand`) synonym-expanded ones merged in. */
 export function useSearch() {
   const [state, setState] = useState<SearchState>(initial);
   const controller = useRef<AbortController | null>(null);
 
   useEffect(() => () => controller.current?.abort(), []);
 
-  const run = useCallback(async (raw: string) => {
+  const run = useCallback(async (raw: string, expand = true) => {
     const q = raw.trim();
     controller.current?.abort();
     if (!q) {
@@ -81,7 +81,7 @@ export function useSearch() {
       setState({
         ...initial,
         query: q,
-        phase: "expanding",
+        phase: expand ? "expanding" : "done",
         results: shown,
         total: first.total,
       });
@@ -90,6 +90,8 @@ export function useSearch() {
       setState({ ...initial, query: q, phase: "error", error: describeError(err, "searching") });
       return;
     }
+
+    if (!expand) return;
 
     try {
       const second = await search(q, true, ac.signal);

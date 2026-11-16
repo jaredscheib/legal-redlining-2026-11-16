@@ -5,7 +5,9 @@ import { DocumentView, type TextRange } from "./components/DocumentView";
 import { EditPanel, type Selection } from "./components/EditPanel";
 import { ResultList } from "./components/ResultList";
 import { SearchBar } from "./components/SearchBar";
+import { SynonymToggle } from "./components/SynonymToggle";
 import { hitKey, useSearch, type DisplayHit } from "./hooks/useSearch";
+import { loadSynonyms, saveSynonyms } from "./lib/prefs";
 
 interface Applied {
   version: number;
@@ -15,6 +17,7 @@ interface Applied {
 export function App({ version }: { version: string }) {
   const [query, setQuery] = useState("");
   const { state: searchState, run } = useSearch();
+  const [synonyms, setSynonyms] = useState(loadSynonyms);
 
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [versions, setVersions] = useState<Record<string, number>>({});
@@ -88,7 +91,13 @@ export function App({ version }: { version: string }) {
 
   const onSearch = (q: string) => {
     setActiveKey(null);
-    void run(q);
+    void run(q, synonyms);
+  };
+
+  const onToggleSynonyms = (on: boolean) => {
+    setSynonyms(on);
+    saveSynonyms(on);
+    if (searchState.query) void run(searchState.query, on);
   };
 
   const onExample = (q: string) => {
@@ -111,7 +120,7 @@ export function App({ version }: { version: string }) {
     setSelection(null);
     setApplied({ version: res.version, changes: 1 });
     // Re-run the search so result offsets match the new text.
-    if (searchState.query) void run(searchState.query);
+    if (searchState.query) void run(searchState.query, synonyms);
   };
 
   const busySearching = searchState.phase === "loading" || searchState.phase === "expanding";
@@ -121,6 +130,7 @@ export function App({ version }: { version: string }) {
       <header className="app-header">
         <h1>Redline</h1>
         <SearchBar value={query} onChange={setQuery} onSearch={onSearch} busy={busySearching} />
+        <SynonymToggle on={synonyms} onChange={onToggleSynonyms} />
       </header>
       <main className="workspace">
         <section className="results-pane" aria-label="Results">
