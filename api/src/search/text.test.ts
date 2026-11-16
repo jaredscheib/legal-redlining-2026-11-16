@@ -90,6 +90,13 @@ describe("parseQuery", () => {
     });
   });
 
+  it("matches phrases on whole-word boundaries only", () => {
+    expect("chocolate charges apply".match(phraseRegExp("late charge"))).toBeNull();
+    expect("a Late\n  Charge applies".match(phraseRegExp("late charge"))?.[0]).toBe(
+      "Late\n  Charge",
+    );
+  });
+
   it("ignores an unbalanced quote and empty phrases", () => {
     expect(parseQuery('"" notice "period')).toEqual({ terms: ["notice", "period"], phrases: [] });
   });

@@ -24,10 +24,11 @@ export function parseQuery(q: string): ParsedQuery {
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
- * A case-insensitive matcher for a phrase. Whitespace inside the phrase matches any run of
- * whitespace, so a phrase still matches across the hard line wraps contracts often have.
+ * A case-insensitive matcher for a phrase on whole-word boundaries. Whitespace inside the
+ * phrase matches any run of whitespace, so a phrase still matches across the hard line wraps
+ * contracts often have; "late charge" does not match inside "chocolate charges".
  */
 export function phraseRegExp(phrase: string): RegExp {
   const pattern = phrase.split(" ").map(escapeRegExp).join("\\s+");
-  return new RegExp(pattern, "giu");
+  return new RegExp(`(?<![\\p{L}\\p{N}])${pattern}(?![\\p{L}\\p{N}])`, "giu");
 }
