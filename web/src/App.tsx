@@ -25,6 +25,8 @@ export function App({ version }: { version: string }) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [applied, setApplied] = useState<Applied | null>(null);
+  // Set when a clicked hit predates the loaded document, so its offsets may be wrong.
+  const [staleHit, setStaleHit] = useState(false);
   const docRequest = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -40,12 +42,13 @@ export function App({ version }: { version: string }) {
     return () => ac.abort();
   }, []);
 
-  const loadDoc = async (id: string, range?: TextRange) => {
+  const loadDoc = async (id: string, range?: TextRange, hitVersion?: number) => {
     docRequest.current?.abort();
     const ac = new AbortController();
     docRequest.current = ac;
     setDocLoading(true);
     setDocError(null);
+    setStaleHit(false);
     setSelection(null);
     setHighlight(null);
     try {
@@ -53,7 +56,7 @@ export function App({ version }: { version: string }) {
       if (ac.signal.aborted) return;
       setDoc(loaded);
       setVersions((v) => ({ ...v, [loaded.id]: loaded.version }));
-      if (range) selectRange(loaded, range);
+      if (range) openRange(loaded, range, hitVersion);
     } catch (err) {
       if (isAbort(err) || ac.signal.aborted) return;
       setDocError({ id, message: describeError(err, "opening the document") });
@@ -65,9 +68,22 @@ export function App({ version }: { version: string }) {
   const selectRange = (d: DocumentBody, range: TextRange) => {
     const end = Math.min(range.end, d.text.length);
     if (end <= range.start) return;
+    setStaleHit(false);
     setHighlight({ start: range.start, end });
     setSelection({ docId: d.id, start: range.start, end, text: d.text.slice(range.start, end) });
     setApplied(null);
+  };
+
+  /** Opens a search hit's range, unless the hit is from an older version of the document. */
+  const openRange = (d: DocumentBody, range: TextRange, hitVersion?: number) => {
+    if (hitVersion !== undefined && hitVersion < d.version) {
+      setSelection(null);
+      setHighlight(null);
+      setApplied(null);
+      setStaleHit(true);
+      return;
+    }
+    selectRange(d, range);
   };
 
   const onSearch = (q: string) => {
@@ -83,8 +99,8 @@ export function App({ version }: { version: string }) {
   const openHit = (hit: DisplayHit) => {
     setActiveKey(hitKey(hit));
     const range = { start: hit.start, end: hit.end };
-    if (doc && doc.id === hit.docId && !docLoading) selectRange(doc, range);
-    else void loadDoc(hit.docId, range);
+    if (doc && doc.id === hit.docId && !docLoading) openRange(doc, range, hit.docVersion);
+    else void loadDoc(hit.docId, range, hit.docVersion);
   };
 
   const onApplied = (res: PatchDocumentResponse, replacement: string) => {
@@ -94,6 +110,8 @@ export function App({ version }: { version: string }) {
     setHighlight({ start: selection.start, end: selection.start + replacement.length });
     setSelection(null);
     setApplied({ version: res.version, changes: 1 });
+    // Re-run the search so result offsets match the new text.
+    if (searchState.query) void run(searchState.query);
   };
 
   const busySearching = searchState.phase === "loading" || searchState.phase === "expanding";
@@ -167,6 +185,10 @@ export function App({ version }: { version: string }) {
                   setHighlight(null);
                 }}
               />
+            ) : staleHit ? (
+              <p className="notice notice-quiet" role="status">
+                This passage may have moved — search again.
+              </p>
             ) : applied ? (
               <p className="notice notice-success" role="status">
                 Applied — now version {applied.version}, {applied.changes}{" "}

@@ -288,6 +288,71 @@ describe("App", () => {
     );
   });
 
+  it("re-runs both search phases after Apply so result offsets match the new text", async () => {
+    const newText = TEXT.replace("six", "twelve");
+    let version = 2;
+    mockApi({
+      "GET /search": () =>
+        json(
+          200,
+          searchBody({
+            total: 1,
+            results: [
+              version === 2
+                ? hit({})
+                : hit({
+                    docVersion: 3,
+                    end: 45,
+                    snippet: "Liability is capped at twelve months of fees.",
+                    highlights: [],
+                  }),
+            ],
+          }),
+        ),
+      "PATCH /documents/msa": () => {
+        version = 3;
+        return json(200, { id: "msa", version: 3, dryRun: false, text: newText, redline: [] });
+      },
+    });
+    const panel = await openFirstHit();
+    await waitFor(() => expect(calls("GET", "/search")).toHaveLength(2));
+    fireEvent.change(within(panel).getByLabelText("Replacement"), {
+      target: { value: "Liability is capped at twelve months of fees." },
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Apply" }));
+
+    expect(await screen.findByText("Applied — now version 3, 1 change")).toBeInTheDocument();
+    const fresh = await screen.findByRole("button", { name: /capped at twelve months/ });
+    await waitFor(() => expect(calls("GET", "/search")).toHaveLength(4));
+    const phases = calls("GET", "/search").map(([u]) =>
+      new URL(u, "http://localhost").searchParams.get("expand"),
+    );
+    expect(phases).toEqual(["false", "true", "false", "true"]);
+
+    // The refreshed hit carries the new offsets and opens the edit panel on the new text.
+    fireEvent.click(fresh);
+    const reopened = await screen.findByRole("region", { name: "Edit passage" });
+    expect(within(reopened).getByLabelText("Replacement")).toHaveValue(
+      "Liability is capped at twelve months of fees.",
+    );
+  });
+
+  it("opens an outdated hit without a selection and says the passage may have moved", async () => {
+    mockApi({
+      "GET /search": () => json(200, searchBody({ total: 1, results: [hit({ docVersion: 1 })] })),
+    });
+    render(<App version="dev" />);
+    search("liability");
+    fireEvent.click(await screen.findByRole("button", { name: /SaaS MSA.*capped at six/s }));
+
+    expect(
+      await screen.findByText("This passage may have moved — search again."),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("doc-text")).toHaveTextContent(TEXT);
+    expect(screen.getByTestId("doc-text").querySelector("mark")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Edit passage" })).not.toBeInTheDocument();
+  });
+
   it("says Claude is unavailable when suggestions return 503", async () => {
     mockApi({
       "GET /search": () => json(200, searchBody({ total: 1, results: [hit({})] })),
