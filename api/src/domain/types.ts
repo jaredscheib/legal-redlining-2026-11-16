@@ -86,6 +86,16 @@ export interface SearchHit {
   /** Query and expansion terms (lowercased) that occur in this passage. */
   matchedTerms: string[];
   score: number;
+  /** True when the document has moved past `docVersion` and its reindex is still running. */
+  stale: boolean;
+}
+
+/** A document in the query's scope whose index is behind the store. */
+export interface SearchIndexing {
+  docId: string;
+  title: string;
+  indexedVersion: number;
+  currentVersion: number;
 }
 
 export interface SearchExpansion {
@@ -106,6 +116,11 @@ export interface SearchResponse {
    * sorted by passages descending, then by the document's best score.
    */
   documents: SearchDocumentCount[];
+  /**
+   * Documents in scope still being reindexed: results for them come from `indexedVersion`.
+   * Empty when every result is current. Search never waits for a reindex.
+   */
+  indexing: SearchIndexing[];
 }
 
 export interface SearchDocumentCount {

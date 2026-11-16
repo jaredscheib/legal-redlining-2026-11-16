@@ -1,17 +1,18 @@
 /**
- * In-memory inverted index over passages with BM25 ranking. Postings are kept per document,
- * so re-indexing or removing one document touches only its own postings; the corpus stats
- * (N, average passage length, document frequency) span every document.
+ * In-memory inverted index over passages with BM25 ranking, as one segment per document: each
+ * document holds its own passages and postings, and the corpus stats (N, total length,
+ * document frequency) span every document. Swapping a document in replaces its segment and
+ * adjusts df by its distinct terms; it never tokenizes, so a segment built off the main thread
+ * (see index-worker.ts) goes in cheaply.
  */
 import { BM25 } from "../config.js";
 import type { Document } from "../domain/types.js";
-import { splitPassages } from "./passages.js";
-import { forEachToken, isStopword } from "./tokenize.js";
+import { buildSegment, type Segment } from "./segment.js";
 
-export interface Posting {
-  /** Index into the owning document's `passages`. */
-  passageId: number;
-  tf: number;
+export interface PostingList {
+  /** Indexes into the owning document's `passages`, ascending. */
+  passageIds: Uint32Array;
+  tfs: Uint32Array;
 }
 
 export interface IndexedPassage {
@@ -27,7 +28,7 @@ export interface IndexedDoc {
   version: number;
   text: string;
   passages: IndexedPassage[];
-  postings: Map<string, Posting[]>;
+  postings: Map<string, PostingList>;
 }
 
 export interface WeightedTerm {
@@ -72,31 +73,35 @@ export class SearchIndex {
     return [...this.docs.keys()];
   }
 
-  /** (Re)indexes a document, replacing any earlier version of it. */
+  /** (Re)indexes a document synchronously, replacing any earlier version of it. */
   indexDoc(doc: Document): IndexedDoc {
+    return this.swap(doc, buildSegment(doc.text));
+  }
+
+  /**
+   * Replaces the document's segment with `segment`, built from `doc.text`. Cost is linear in
+   * the document's passages and distinct terms; no text is read.
+   */
+  swap(doc: Document, segment: Segment): IndexedDoc {
     this.removeDoc(doc.id);
-    const passages: IndexedPassage[] = [];
-    const postings = new Map<string, Posting[]>();
-    const tf = new Map<string, number>();
-    for (const span of splitPassages(doc.text)) {
-      const passageId = passages.length;
-      let length = 0;
-      tf.clear();
-      forEachToken(doc.text, span.start, span.end, (term) => {
-        if (isStopword(term)) return;
-        length++;
-        tf.set(term, (tf.get(term) ?? 0) + 1);
-      });
-      if (length === 0) continue; // punctuation or stopwords only: nothing can match it
-      for (const [term, n] of tf) {
-        let list = postings.get(term);
-        if (!list) postings.set(term, (list = []));
-        list.push({ passageId, tf: n });
-      }
-      passages.push({ start: span.start, end: span.end, length });
+    const { starts, ends, lengths, terms, offsets, passageIds, tfs } = segment;
+    const passages: IndexedPassage[] = new Array<IndexedPassage>(starts.length);
+    for (let i = 0; i < starts.length; i++) {
+      const length = lengths[i] ?? 0;
+      passages[i] = { start: starts[i] ?? 0, end: ends[i] ?? 0, length };
       this.totalLength += length;
     }
-    for (const [term, list] of postings) this.df.set(term, this.docFreq(term) + list.length);
+    const postings = new Map<string, PostingList>();
+    for (let t = 0; t < terms.length; t++) {
+      const term = terms[t] as string;
+      const from = offsets[t] ?? 0;
+      const to = offsets[t + 1] ?? from;
+      postings.set(term, {
+        passageIds: passageIds.subarray(from, to),
+        tfs: tfs.subarray(from, to),
+      });
+      this.df.set(term, this.docFreq(term) + (to - from));
+    }
     this.passageCount += passages.length;
     const entry: IndexedDoc = {
       id: doc.id,
@@ -114,7 +119,7 @@ export class SearchIndex {
     const entry = this.docs.get(id);
     if (!entry) return false;
     for (const [term, list] of entry.postings) {
-      const left = this.docFreq(term) - list.length;
+      const left = this.docFreq(term) - list.passageIds.length;
       if (left > 0) this.df.set(term, left);
       else this.df.delete(term);
     }
@@ -142,7 +147,10 @@ export class SearchIndex {
         const list = doc.postings.get(term);
         if (!list) continue;
         const idf = this.idf(term) * weight;
-        for (const { passageId, tf } of list) {
+        const { passageIds, tfs } = list;
+        for (let i = 0; i < passageIds.length; i++) {
+          const passageId = passageIds[i] ?? 0;
+          const tf = tfs[i] ?? 0;
           const len = doc.passages[passageId]?.length ?? 0;
           const s = (idf * tf * (k1 + 1)) / (tf + k1 * (1 - b + (b * len) / avgdl));
           scores.set(passageId, (scores.get(passageId) ?? 0) + s);
