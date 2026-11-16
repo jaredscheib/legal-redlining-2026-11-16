@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Usage: scripts/with-keychain KEY [KEY...] -- <command> [args...]
+# Exports each KEY from the macOS keychain (service legal-redlining-2026-11-16,
+# account KEY), then execs the command. Missing keys warn and continue.
+# Never prints a secret value.
+set -euo pipefail
+
+SERVICE="legal-redlining-2026-11-16"
+keys=()
+while [[ $# -gt 0 && "$1" != "--" ]]; do
+  keys+=("$1")
+  shift
+done
+if [[ $# -eq 0 ]]; then
+  echo "usage: $0 KEY [KEY...] -- <command> [args...]" >&2
+  exit 2
+fi
+shift # drop --
+if [[ $# -eq 0 ]]; then
+  echo "with-keychain: no command given" >&2
+  exit 2
+fi
+
+for key in "${keys[@]+"${keys[@]}"}"; do
+  if [[ -n "${!key:-}" ]]; then
+    continue # already set in the environment; leave it alone
+  fi
+  if ! command -v security >/dev/null 2>&1; then
+    echo "with-keychain: 'security' not available; $key not loaded" >&2
+    continue
+  fi
+  if value="$(security find-generic-password -s "$SERVICE" -a "$key" -w 2>/dev/null)"; then
+    export "$key=$value"
+    unset value
+  else
+    echo "with-keychain: $key not found in keychain service $SERVICE; continuing without it" >&2
+  fi
+done
+
+exec "$@"

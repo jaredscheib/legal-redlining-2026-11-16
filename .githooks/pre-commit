@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Installed with `make hooks`. Runs format check, lint and fast tests.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+make --no-print-directory format-check
+make --no-print-directory lint
+make --no-print-directory test-fast
