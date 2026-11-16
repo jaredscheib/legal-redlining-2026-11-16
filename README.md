@@ -7,23 +7,34 @@ new wording by searching again.
 It is a TypeScript HTTP API (Hono on Node 22) with an in-memory document store and a BM25
 passage index, plus a React UI. Four synthetic contracts are loaded at startup.
 
+**Assumptions.** Documents are plain text (UTF-8 in, JavaScript strings in memory). PDF and
+.docx are not supported: they would need an import step that extracts text and keeps a map
+from text offsets back to the source (and, for .docx, writes redlines back as tracked
+changes). One user, one process; state lives in memory.
+
 ## Using the UI
 
 Start everything with `make dev`, then open <http://localhost:5173>.
 
+0. **Start.** The home page lists every contract; open one directly, or search.
 1. **Search.** Type what you are looking for, for example `limitation of liability` or a
    quoted phrase such as `"late charge"`. Results are ranked passages from every contract,
-   with the matched words highlighted.
+   with the matched words highlighted, a "X passages across Y documents" summary, and, when
+   **Synonyms** is on, an "Also searching: …" line of the Claude synonyms being used. Plain
+   results appear at once; synonym matches merge in a moment later. Clearing the box returns
+   to the home page.
 2. **Open a result.** The contract opens beside the results with that passage selected. You
-   can also pick a contract from the document menu and select any text yourself.
+   can also pick a contract from the list or menu and select any text yourself (mouse or
+   keyboard). The header shows the document's version; **Close document** closes it.
 3. **Write the change.** The edit panel shows the selected text. Type the replacement.
-4. **Or ask Claude.** Press **Suggest with Claude**, optionally with an instruction such as
+4. **Or ask Claude.** Press **Suggest**, optionally with an instruction such as
    "shorten the notice period to fifteen days". The suggestion fills the replacement box with
    a one-line rationale; edit it as you like.
 5. **Preview.** Press **Preview** to see the word-level redline: deletions struck through,
    insertions underlined. Nothing is saved yet.
-6. **Apply.** Press **Apply**. The document is saved with a new version number, and the
-   search runs again so the results match the new text.
+6. **Apply.** Press **Apply**. The page confirms "Applied 1 change. Now version N.", and the
+   search runs again so the results match the new text. If someone else changed the document
+   since you opened it, the save is refused and you are offered a reload.
 
 ## Setup
 
@@ -123,9 +134,20 @@ curl -sS -X POST localhost:8787/documents -H 'content-type: application/json' \
 
 ### `PATCH /documents/:id[?dryRun=true]`
 
-Replaces text found by content. `occurrence` (1-based, default 1) picks among repeated
-matches; matching is exact and case-sensitive. One change per request today
-(`MAX_CHANGES_PER_REQUEST`). With `dryRun=true` nothing is stored and `version` is unchanged.
+Up to 50 changes per request (`MAX_CHANGES_PER_REQUEST`), applied all or nothing: every
+change is resolved against the original text, overlaps are rejected, and if any change fails
+nothing is stored. Each change targets either
+
+- **text**: `target: {text, occurrence?}`. `occurrence` (1-based, default 1) picks among
+  repeated matches, counted left to right without overlaps; exact and case-sensitive.
+- **a range**: `range: {start, end, expectedText?}`, UTF-16 offsets, half-open. A wrong
+  `expectedText` is refused (`422 EXPECTED_TEXT_MISMATCH`), which catches stale offsets.
+
+With `dryRun=true` nothing is stored and `version` is unchanged; the redline has one hunk per
+change (`changeIndex`). `GET` and `PATCH` responses carry `ETag: "v<version>"`. Send
+`If-Match: "v<n>"` (also accepted: `*`, a comma list, or a weak `W/"v<n>"` compared
+leniently) to refuse the write with `412 VERSION_CONFLICT` if the document has moved on;
+without `If-Match` the write is unconditional. The UI always sends it.
 
 ```sh
 curl -sS -X PATCH 'localhost:8787/documents/e7f4d661-…?dryRun=true' -H 'content-type: application/json' \
@@ -235,19 +257,22 @@ Every non-2xx response has the same shape. `code` repeats the HTTP status and
 }
 ```
 
-| Status | `reason`                               | When                                                                                                     |
-| ------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 400    | `INVALID_PAYLOAD`                      | Malformed JSON or a failed validation (`details.issues` has the zod issues), e.g. an empty `target.text` |
-| 400    | `RANGE_OUT_OF_BOUNDS`                  | Suggestion range past the end of the document (`details.length`)                                         |
-| 404    | `DOCUMENT_NOT_FOUND`                   | Unknown document id, in the path or in `docId`                                                           |
-| 404    | `ROUTE_NOT_FOUND`                      | No such route                                                                                            |
-| 422    | `TARGET_NOT_FOUND`                     | `target.text` does not occur in the document (`details.changeIndex`)                                     |
-| 422    | `OCCURRENCE_OUT_OF_RANGE`              | Fewer occurrences than requested (`details.found`)                                                       |
-| 422    | `INVALID_RANGE`, `OVERLAPPING_CHANGES` | Engine checks on resolved changes; unreachable with one change per request                               |
-| 501    | `NOT_IMPLEMENTED`                      | The route's service is not configured in this build                                                      |
-| 502    | `LLM_ERROR`                            | The model answered with unusable output                                                                  |
-| 503    | `LLM_UNAVAILABLE`                      | No API key, no recording in replay mode, timeout or API error                                            |
-| 500    | none                                   | Unexpected; the body is generic and the `x-request-id` header matches the `http.unhandled` log line      |
+| Status | `reason`                  | When                                                                                                     |
+| ------ | ------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 400    | `INVALID_PAYLOAD`         | Malformed JSON or a failed validation (`details.issues` has the zod issues), e.g. an empty `target.text` |
+| 400    | `RANGE_OUT_OF_BOUNDS`     | Suggestion range past the end of the document (`details.length`)                                         |
+| 404    | `DOCUMENT_NOT_FOUND`      | Unknown document id, in the path or in `docId`                                                           |
+| 404    | `ROUTE_NOT_FOUND`         | No such route                                                                                            |
+| 422    | `TARGET_NOT_FOUND`        | `target.text` does not occur in the document (`details.changeIndex`)                                     |
+| 422    | `OCCURRENCE_OUT_OF_RANGE` | Fewer occurrences than requested (`details.found`)                                                       |
+| 412    | `VERSION_CONFLICT`        | `If-Match` does not match the current version (`details.currentVersion`)                                 |
+| 422    | `OVERLAPPING_CHANGES`     | Two changes overlap or start at the same offset                                                          |
+| 422    | `RANGE_OUT_OF_BOUNDS`     | A `range` change outside the document (`details.changeIndex`)                                            |
+| 422    | `EXPECTED_TEXT_MISMATCH`  | A `range` change whose `expectedText` differs (`details.changeIndex`)                                    |
+| 501    | `NOT_IMPLEMENTED`         | The route's service is not configured in this build                                                      |
+| 502    | `LLM_ERROR`               | The model answered with unusable output                                                                  |
+| 503    | `LLM_UNAVAILABLE`         | No API key, no recording in replay mode, timeout or API error                                            |
+| 500    | none                      | Unexpected; the body is generic and the `x-request-id` header matches the `http.unhandled` log line      |
 
 ## Search
 
@@ -288,15 +313,21 @@ Code in `api/src/search/`.
    whole-word boundaries, and any run of whitespace in the text matches the space in the
    phrase, so hard line wraps do not break it. A passage must contain every phrase, and the
    phrase words also contribute to its score. Phrases are never expanded.
-6. **Expansion (design).** Unquoted terms go to Claude (`claude-haiku-5-5`) for a few
-   synonyms each; added terms score at weight 0.5 (`EXPANSION_TERM_WEIGHT`). The response
+6. **Expansion.** Unquoted terms go to Claude (`claude-haiku-5-5`, thinking off, 2.5 s
+   timeout) for up to 3 contract-language alternatives per term or phrase (9 in total),
+   cached per term list; added terms score at weight 0.5 (`EXPANSION_TERM_WEIGHT`). The response
    lists the added terms, or `skipped` with a reason such as `no_api_key`, `timeout` or
    `no_terms`. `expand=false` turns it off. When no expander is configured the status is
    `off`.
 7. **Highlights.** Matching tokens and phrase matches inside the snippet, as merged
    `{start, end}` ranges relative to the snippet.
-8. **Reindexing.** The index subscribes to store changes. When a document is created or
-   edited, only its passages and postings are rebuilt.
+8. **Reindexing.** The index subscribes to store changes. A created document is indexed at
+   once. An edited document is re-indexed after the write returns (`setImmediate`), with
+   repeated edits to one document coalesced; a search waits for any queued reindex, so
+   writes never wait and reads never see an older version. The whole document is rebuilt
+   (about 1–1.3 s at 10 MB), and on a single thread a search arriving meanwhile waits for it.
+   Next steps: a worker thread with self-describing staleness, then incremental reindexing
+   of only the changed passages.
 
 **Complexity.** Building the index is O(n) in document size: one pass to split, one to
 tokenize. A query costs time proportional to the total length of the postings lists of its
@@ -309,10 +340,13 @@ on passages that already matched a term.
   because each passage is checked on its own.
 - A phrase made only of stopwords (`"of the"`) matches nothing: it adds no scoring terms, so
   no passage is a candidate.
-- No stemming: `terminate` does not find `termination`. Expansion is the intended fix.
-- Without expansion, synonyms are missed. In the search scenarios, plain BM25 finds the
-  expected passage in the top 3 for 5 of 10 queries (5 of the 6 that share vocabulary with the
-  clause); the other 4 are labelled as needing expansion.
+- No stemming: `terminate` does not find `termination`.
+- **Ranking, measured** (`make evals`, 10 labelled queries): the expected passage is in the
+  top 3 for 5 of 10 queries without expansion, and 5 of 10 with it (1 of the 4 synonym-only
+  queries). The synonyms are good (terminate → cancel, rescind; indemnify → hold harmless);
+  the misses are ranking: one-line headings ("Security Deposit.") outrank their clauses, and
+  synonym matches at half weight rarely beat direct matches. Folding headings into the
+  clause that follows and tuning the expansion weight are the next experiments.
 
 ## API design rationale
 
@@ -352,13 +386,13 @@ on passages that already matched a term.
   length, and one postings entry per distinct term.
 
 **Measured** on a generated 10 MB contract (seed clauses repeated; 118,563 passages), Node
-24.22 on a 2.0 GHz quad-core Intel Core i5 laptop. Each figure is the range over 2 runs.
+24.22 on a 2.0 GHz quad-core Intel Core i5 laptop. Each figure is the range over several runs on a busy development machine.
 
 | Measure                                    | Result         | Source                              |
 | ------------------------------------------ | -------------- | ----------------------------------- |
 | Index build                                | 1,029–1,334 ms | `make bench`                        |
-| Search, median of 20 queries               | 4.9–5.1 ms     | `make bench`                        |
-| Heap used after build and queries          | 151–166 MB     | `make bench`                        |
+| Search, median of 20 queries               | 3.9–5.1 ms     | `make bench`                        |
+| Heap used after build and queries          | 151–204 MB     | `make bench`                        |
 | `POST`, `GET` and list of a 10 MB document | 366–415 ms     | `api/test/large-file.large.test.ts` |
 | `PATCH` near the end of a 10 MB document   | 109–144 ms     | `api/test/large-file.large.test.ts` |
 | Index build, in the test                   | 1,302–1,715 ms | `api/test/search.large.test.ts`     |
@@ -377,7 +411,7 @@ per PATCH) as tripwires for accidental quadratic work, not as benchmarks.
 
 ## LLM usage and cost control
 
-- **Models (design).** Query expansion uses `claude-haiku-5-5`: short, cheap and on the
+- **Models.** Query expansion uses `claude-haiku-5-5`: short, cheap and on the
   search latency path. Suggestions use `claude-sonnet-5-5` for drafting quality. Both are set
   in `api/src/config.ts` together with the timeouts (2.5 s for expansion, 20 s for a
   suggestion) and the token prices used for the ledger.
@@ -404,7 +438,11 @@ per PATCH) as tripwires for accidental quadratic work, not as benchmarks.
   replays from `data/app.log`.
 - **Budget.** The project's spending limit is enforced on the Claude platform, which is the
   hard backstop; `make spend` is the running local record against it.
-- **Prompt caching** is not used: the prompts are short.
+- **Prompt caching** is not used: the prompts are below the minimum cacheable length.
+- **Measured** (live, effort low): expansion on Haiku p50 1.6 s (max 2.8 s, about $0.0001
+  per call) versus Sonnet p50 2.1 s at about 20× the cost, with comparable synonyms
+  (`make compare-expansion`). Suggestions on Sonnet keep defined terms (2/2) and clause
+  numbers (3/3) in the eval flows, and all 3 end-to-end flows pass.
 - **When the model is unavailable** (no key, timeout, API error, refusal): search runs
   unexpanded and says why; suggestions return `503 LLM_UNAVAILABLE` (`502 LLM_ERROR` for
   unusable output), and the UI asks the user to write the change themselves.
@@ -490,11 +528,11 @@ data/               Logs, pids, ledger, evals output (git-ignored)
 
 ## What's next
 
-- **Optimistic concurrency.** `ETag` on reads and `If-Match` on `PATCH`, answering `412` when
-  the document has moved on.
-- **Several changes per request**, validated together and applied all-or-nothing. The engine
-  already resolves, checks overlap and applies many changes in one pass; the limit is
-  `MAX_CHANGES_PER_REQUEST = 1`.
-- **Range targeting**: `target: {start, end, text}` for clients that already hold offsets,
-  such as the UI after a selection, with `text` as a guard against stale offsets.
+- **Reindexing off the main thread** with self-describing staleness: search answers at once,
+  lists documents still being re-indexed, marks stale hits, and the client refreshes when
+  they finish (later, streamed with server-sent events). Then incremental reindexing of only
+  the changed passages.
+- **Ranking**: fold heading passages into their clauses; tune the synonym weight.
+- **Version history**: list versions and view any past version read-only.
+- **Document import** for PDF and .docx.
 - **Embeddings** for concept queries, when measured misses justify the extra infrastructure.
