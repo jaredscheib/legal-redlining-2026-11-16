@@ -7,7 +7,7 @@ export GIT_SHA
 LLM_LEDGER_PATH ?= $(dir $(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null))data/llm-ledger.jsonl
 export LLM_LEDGER_PATH
 
-.PHONY: setup check lint format format-check typecheck test test-fast build smoke evals spend bench dev dev-stop hooks tag
+.PHONY: setup check lint format format-check typecheck test test-fast build smoke evals compare-expansion spend bench dev dev-stop hooks tag
 
 setup: ## Install exact dependencies from the lockfile
 	npm ci
@@ -41,6 +41,9 @@ smoke: ## Build the API, start it on a free port, curl /healthz and /documents, 
 
 evals: ## Run scenarios/ through the in-process app; table + data/evals/<ts>.json (LLM_MODE, default record)
 	@LOG_STDOUT=off ./scripts/with-keychain ANTHROPIC_API_KEY -- npm run --silent evals -w api
+
+compare-expansion: ## LIVE, billed (~15 calls, < $0.05): expansion latency and synonyms per model
+	@LOG_STDOUT=off LLM_MODE=live ./scripts/with-keychain ANTHROPIC_API_KEY -- npm run --silent compare-expansion -w api
 
 spend: ## $ spent on live LLM calls vs the $30 project budget
 	@npm run --silent spend -w api
