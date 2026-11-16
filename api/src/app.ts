@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { ApiError, onError, onNotFound } from "./errors.js";
+import { requestId } from "./request-id.js";
 import { registerDocumentRoutes } from "./routes/documents.js";
 import { registerSearchRoutes } from "./routes/search.js";
 import { registerSuggestionRoutes } from "./routes/suggestions.js";
@@ -11,6 +12,8 @@ export type { AppDeps };
 
 export function createApp(deps: AppDeps): Hono {
   const app = new Hono();
+
+  app.use("*", requestId());
 
   app.get("/healthz", (c) => c.json({ status: "ok", version: version() }));
 
