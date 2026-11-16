@@ -1,0 +1,46 @@
+{
+  "key": "007535fe1f4fac5ce83c66498b208298867b732f22582f31e1af62acd685fd32",
+  "op": "suggest",
+  "model": "claude-sonnet-5-5",
+  "request": {
+    "model": "claude-sonnet-5-5",
+    "system": "You are a contract drafting assistant inside a legal redlining tool.\nYou receive a selected passage from a contract, some surrounding text for context, and optionally an instruction from the lawyer.\nReturn replacement text for the selected passage only, plus a one-line rationale.\nRules:\n- \"replacement\" must replace exactly the selected passage: do not include any of the surrounding context, and do not add new clauses beyond what the instruction requires.\n- Change only what the instruction asks. If there is no instruction, make a minimal edit that improves clarity and precision without changing the commercial or legal effect.\n- Keep every defined term exactly as written, including capitalization (e.g. \"Confidential Information\", \"Company\", \"Customer\"), unless the instruction says otherwise. Do not introduce new defined terms unless the instruction requires it.\n- Keep clause numbering (e.g. a leading \"6.2\"), cross-references and numerals-with-words formats (e.g. \"thirty (30) days\") exactly as in the original, unless the instruction says otherwise.\n- Keep every qualifier and limiting word of the original (e.g. \"invoiced\", \"undisputed\", \"reasonable\", \"material\", \"solely\") unless the instruction says otherwise.\n- Match the drafting style and tense of the original. Do not wrap the replacement in quotation marks.\n- \"rationale\" is one short sentence describing what changed and why.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "<context_before>n obligations of confidentiality no less protective than those in this\nAgreement. The Receiving Party is responsible for any breach of this Agreement by its\nRepresentatives.\n\n4. Compelled Disclosure.\n</context_before>\n<selected_passage>4.1 If the Receiving Party is required by law, regulation or court order to disclose any\nConfidential Information, it shall give the Disclosing Party prompt written notice, to the\nextent legally permitted, so that the Disclosing Party may seek a protective order, and shall\ndisclose only that portion of the Confidential Information that it is legally required to\ndisclose.</selected_passage>\n<context_after>\n\n5. Return or Destruction.\n5.1 Upon the written request of the Disclosing Party, or upon the end of the Purpose, the\nReceiving Party shall promptly return or destroy all Confidential Information in i</context_after>\n<instruction>no protective order. make it koombayah</instruction>"
+      }
+    ],
+    "schema": {
+      "type": "object",
+      "properties": {
+        "replacement": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "replacement",
+        "rationale"
+      ],
+      "description": "{$schema: \"https://json-schema.org/draft/2020-12/schema\"}"
+    },
+    "maxTokens": 1024,
+    "effort": "low"
+  },
+  "response": {
+    "text": "{\"replacement\":\"4.1 If the Receiving Party is required by law, regulation or court order to disclose any Confidential Information, it shall give the Disclosing Party prompt written notice, to the extent legally permitted, and shall disclose only that portion of the Confidential Information that it is legally required to disclose.\",\"rationale\":\"Removed the protective order language as instructed; \\\"make it koombayah\\\" is not a recognizable drafting instruction, so no other changes were made.\"}",
+    "stopReason": "end_turn",
+    "model": "claude-sonnet-5-5"
+  },
+  "usage": {
+    "inputTokens": 1023,
+    "outputTokens": 154,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "recordedAt": "2026-11-16T22:57:09.972Z"
+}
