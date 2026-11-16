@@ -63,4 +63,35 @@ describe("large documents (10 MB+)", () => {
     // Generous ceiling: this is a tripwire for accidental quadratic work, not a benchmark.
     expect(performance.now() - started).toBeLessThan(5000);
   });
+
+  it("applies a PATCH near the end of the document through the route", async () => {
+    const store = new InMemoryDocumentStore();
+    const marker = "Closing marker: thirty (30) days.";
+    const big = text + marker + "\nEnd.\n";
+    const doc = store.create({ title: "Large", text: big });
+    const app = createApp({ store });
+
+    const started = performance.now();
+    const res = await app.request(`/documents/${doc.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        changes: [
+          { operation: "replace", target: { text: marker }, replacement: "Closing: 15 days." },
+        ],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { version: number; text: string; redline: unknown[] };
+    const ms = performance.now() - started;
+    console.log(`large-file: PATCH near the end of ${big.length} chars took ${ms.toFixed(1)} ms`);
+
+    const expected = text + "Closing: 15 days.\nEnd.\n";
+    expect(body.version).toBe(2);
+    expect(body.redline).toHaveLength(1);
+    expect(sha(body.text)).toBe(sha(expected));
+    expect(sha(store.get(doc.id)?.text ?? "")).toBe(sha(expected));
+    // Generous ceiling: a tripwire for accidental quadratic work, not a benchmark.
+    expect(ms).toBeLessThan(1500);
+  });
 });

@@ -4,8 +4,10 @@ A redlining service for lawyers: search across contracts, pick a passage, get a
 Claude-suggested replacement (or write one), preview it as an inline redline, apply it, and
 find the new text by searching again.
 
-**Status: skeleton.** Documents can be listed, read and created. Search, suggestions and edits
-are validating stubs that return `501 NOT_IMPLEMENTED`; the evals measure the gap.
+**Status: skeleton.** Documents can be listed, read, created and edited
+(`PATCH /documents/{id}`, with `?dryRun=true` for a preview and a word-level redline). Search
+and suggestions are validating stubs that return `501 NOT_IMPLEMENTED`; the evals measure the
+gap.
 
 ## Setup
 
