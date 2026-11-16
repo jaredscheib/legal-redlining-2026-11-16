@@ -42,7 +42,7 @@ export function DocumentView({
     );
   }
 
-  const onMouseUp = () => {
+  const readSelection = () => {
     const container = textRef.current;
     const selection = window.getSelection();
     if (!container || !selection || selection.rangeCount === 0) return;
@@ -61,7 +61,19 @@ export function DocumentView({
         <h2>{doc.title}</h2>
         <span className="tag">version {doc.version}</span>
       </header>
-      <pre ref={textRef} className="doc-text" data-testid="doc-text" onMouseUp={onMouseUp}>
+      <pre
+        ref={textRef}
+        className="doc-text"
+        data-testid="doc-text"
+        // Focusable so keyboard (caret) selection works and its keyup lands here.
+        tabIndex={0}
+        onMouseUp={readSelection}
+        onKeyUp={(e) => {
+          // Read the selection when Shift is released, not on every Shift+arrow: re-rendering
+          // the highlight mid-gesture would reset the selection being extended.
+          if (e.key === "Shift") readSelection();
+        }}
+      >
         {h ? (
           <>
             {doc.text.slice(0, h.start)}
