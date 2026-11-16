@@ -27,6 +27,7 @@ gap.
 | `smoke`                            | Build the API, start it on a free port, curl `/healthz` and `/documents`    |
 | `evals`                            | Run `scenarios/` through the app; table + `data/evals/<timestamp>.json`     |
 | `spend`                            | LLM $ spent, live calls and replays against the $30 budget                  |
+| `bench`                            | Search on a 10 MB+ contract: index build ms, median query ms, heap used     |
 | `dev` / `dev-stop`                 | API on :8787 and Vite on :5173 in the background (pids and logs in `data/`) |
 | `hooks`                            | Use `.githooks/` (pre-commit: format check, lint, fast tests)               |
 | `tag V=x.y.z`                      | Annotated tag `vx.y.z` (not pushed)                                         |

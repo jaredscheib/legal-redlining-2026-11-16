@@ -7,7 +7,7 @@ export GIT_SHA
 LLM_LEDGER_PATH ?= $(dir $(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null))data/llm-ledger.jsonl
 export LLM_LEDGER_PATH
 
-.PHONY: setup check lint format format-check typecheck test test-fast build smoke evals spend dev dev-stop hooks tag
+.PHONY: setup check lint format format-check typecheck test test-fast build smoke evals spend bench dev dev-stop hooks tag
 
 setup: ## Install exact dependencies from the lockfile
 	npm ci
@@ -44,6 +44,9 @@ evals: ## Run scenarios/ through the in-process app; table + data/evals/<ts>.jso
 
 spend: ## $ spent on live LLM calls vs the $30 project budget
 	@npm run --silent spend -w api
+
+bench: ## Search over a 10 MB+ contract: index build ms, median query ms, heap used
+	@LOG_STDOUT=off LOG_FILE=off npm run --silent bench -w api
 
 dev: ## API on 8787 + Vite on 5173 in the background (override with API_PORT / WEB_PORT)
 	@./scripts/dev.sh start
