@@ -1,0 +1,15 @@
+name: ci
+# Run once per merge, by hand, after `make check` passes locally: gh workflow run ci.yml --ref <branch>
+# The project's first ticket adds its toolchain setup. Actions minutes are paid: keep every cap below.
+on:
+  workflow_dispatch:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: make check
