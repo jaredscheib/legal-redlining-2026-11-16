@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { appWith } from "../test/http.js";
-import type { ErrorBody } from "./errors.js";
+import { appWith, expectError, jsonInit, readJson } from "../test/http.js";
 import { InMemoryDocumentStore } from "./store/memory.js";
 import { seedStore } from "./store/seed.js";
 
@@ -13,27 +12,11 @@ beforeEach(() => {
   app = appWith({ store });
 });
 
-const json = (body: unknown) => ({
-  method: "POST",
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify(body),
-});
-
-/** Tests poke at response JSON freely; the shapes are asserted, not trusted. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const read = (res: Response) => res.json() as Promise<any>;
-
-function expectError(body: ErrorBody, code: number, reason?: string) {
-  expect(typeof body.error).toBe("string");
-  expect(body.code).toBe(code);
-  if (reason) expect(body.details?.reason).toBe(reason);
-}
-
 describe("GET /healthz", () => {
   it("reports ok and the version", async () => {
     const res = await app.request("/healthz");
     expect(res.status).toBe(200);
-    const body = await read(res);
+    const body = await readJson(res);
     expect(body.status).toBe("ok");
     expect(typeof body.version).toBe("string");
   });
@@ -43,7 +26,7 @@ describe("documents", () => {
   it("lists the 4 seed contracts with metadata only", async () => {
     const res = await app.request("/documents");
     expect(res.status).toBe(200);
-    const { documents } = await read(res);
+    const { documents } = await readJson(res);
     expect(documents).toHaveLength(4);
     for (const d of documents) {
       expect(Object.keys(d).sort()).toEqual(["id", "length", "title", "version"]);
@@ -58,7 +41,7 @@ describe("documents", () => {
   it("gets one document", async () => {
     const res = await app.request("/documents/saas-msa");
     expect(res.status).toBe(200);
-    const body = await read(res);
+    const body = await readJson(res);
     expect(body).toMatchObject({ id: "saas-msa", title: "SaaS Master Services Agreement" });
     expect(body.text).toContain("Customer may cancel this Agreement");
     expect(body.version).toBe(1);
@@ -67,22 +50,25 @@ describe("documents", () => {
   it("404s an unknown document with DOCUMENT_NOT_FOUND", async () => {
     const res = await app.request("/documents/nope");
     expect(res.status).toBe(404);
-    expectError(await read(res), 404, "DOCUMENT_NOT_FOUND");
+    expectError(await readJson(res), 404, "DOCUMENT_NOT_FOUND");
   });
 
   it("creates a document (201) and can read it back", async () => {
-    const res = await app.request("/documents", json({ title: "Side Letter", text: "1. Hi." }));
+    const res = await app.request(
+      "/documents",
+      jsonInit("POST", { title: "Side Letter", text: "1. Hi." }),
+    );
     expect(res.status).toBe(201);
-    const created = await read(res);
+    const created = await readJson(res);
     expect(created).toMatchObject({ title: "Side Letter", text: "1. Hi.", version: 1 });
     const again = await app.request(`/documents/${created.id}`);
-    expect((await read(again)).text).toBe("1. Hi.");
+    expect((await readJson(again)).text).toBe("1. Hi.");
   });
 
   it("400s an invalid payload with zod issues", async () => {
-    const res = await app.request("/documents", json({ title: "" }));
+    const res = await app.request("/documents", jsonInit("POST", { title: "" }));
     expect(res.status).toBe(400);
-    const body = await read(res);
+    const body = await readJson(res);
     expectError(body, 400, "INVALID_PAYLOAD");
     expect(Array.isArray(body.details.issues)).toBe(true);
     expect(body.details.issues.length).toBeGreaterThan(0);
@@ -95,7 +81,7 @@ describe("documents", () => {
       body: "{not json",
     });
     expect(res.status).toBe(400);
-    expectError(await read(res), 400, "INVALID_PAYLOAD");
+    expectError(await readJson(res), 400, "INVALID_PAYLOAD");
   });
 });
 
@@ -103,7 +89,7 @@ describe("errors", () => {
   it("404s an unknown route with the error shape", async () => {
     const res = await app.request("/nope");
     expect(res.status).toBe(404);
-    expectError(await read(res), 404, "ROUTE_NOT_FOUND");
+    expectError(await readJson(res), 404, "ROUTE_NOT_FOUND");
   });
 
   it("500s an unexpected throw without leaking the message or stack", async () => {
@@ -124,15 +110,15 @@ describe("input validation", () => {
   it("GET /search validates its query", async () => {
     const res = await app.request("/search?limit=0");
     expect(res.status).toBe(400);
-    expectError(await read(res), 400, "INVALID_PAYLOAD");
+    expectError(await readJson(res), 400, "INVALID_PAYLOAD");
   });
 
   it("POST /documents/:id/suggestions validates its range", async () => {
     const res = await app.request(
       "/documents/saas-msa/suggestions",
-      json({ range: { start: 0, end: 401 } }),
+      jsonInit("POST", { range: { start: 0, end: 401 } }),
     );
     expect(res.status).toBe(400);
-    expectError(await read(res), 400, "INVALID_PAYLOAD");
+    expectError(await readJson(res), 400, "INVALID_PAYLOAD");
   });
 });

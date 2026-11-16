@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { appWith } from "../../test/http.js";
+import { appWith, jsonInit, readJson } from "../../test/http.js";
 import { MAX_CHANGES_PER_REQUEST } from "../config.js";
 import type { PatchDocumentResponse } from "../domain/types.js";
-import type { ErrorBody } from "../errors.js";
 import { InMemoryDocumentStore } from "../store/memory.js";
 
 const TEXT = "Payment is due within thirty (30) days. Late fees accrue after thirty (30) days.";
@@ -17,11 +16,7 @@ beforeEach(() => {
 });
 
 const patch = (url: string, body: unknown, headers: Record<string, string> = {}) =>
-  app.request(url, {
-    method: "PATCH",
-    headers: { "content-type": "application/json", ...headers },
-    body: JSON.stringify(body),
-  });
+  app.request(url, jsonInit("PATCH", body, headers));
 
 const swap = (occurrence?: number) => ({
   changes: [
@@ -32,9 +27,6 @@ const swap = (occurrence?: number) => ({
     },
   ],
 });
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const errorOf = (res: Response) => res.json() as Promise<ErrorBody & { details: any }>;
 
 describe("PATCH /documents/:id", () => {
   it("dry run returns the new text and redline but leaves the store unchanged", async () => {
@@ -86,7 +78,7 @@ describe("PATCH /documents/:id", () => {
   it("404s an unknown document", async () => {
     const res = await patch("/documents/nope", swap());
     expect(res.status).toBe(404);
-    expect((await errorOf(res)).details.reason).toBe("DOCUMENT_NOT_FOUND");
+    expect((await readJson(res)).details.reason).toBe("DOCUMENT_NOT_FOUND");
   });
 
   it.each([
@@ -109,7 +101,7 @@ describe("PATCH /documents/:id", () => {
   ])("400s %s with zod issues", async (_name, body) => {
     const res = await patch("/documents/doc", body);
     expect(res.status).toBe(400);
-    const err = await errorOf(res);
+    const err = await readJson(res);
     expect(err.details.reason).toBe("INVALID_PAYLOAD");
     expect(err.details.issues.length).toBeGreaterThan(0);
     expect(store.get("doc")?.version).toBe(1);
@@ -118,7 +110,7 @@ describe("PATCH /documents/:id", () => {
   it("400s a bad dryRun value", async () => {
     const res = await patch("/documents/doc?dryRun=yes", swap());
     expect(res.status).toBe(400);
-    expect((await errorOf(res)).details.reason).toBe("INVALID_PAYLOAD");
+    expect((await readJson(res)).details.reason).toBe("INVALID_PAYLOAD");
   });
 
   it("422s TARGET_NOT_FOUND and changes nothing", async () => {
@@ -126,7 +118,7 @@ describe("PATCH /documents/:id", () => {
       changes: [{ operation: "replace", target: { text: "ninety" }, replacement: "x" }],
     });
     expect(res.status).toBe(422);
-    const err = await errorOf(res);
+    const err = await readJson(res);
     expect(err.details).toEqual({ reason: "TARGET_NOT_FOUND", changeIndex: 0 });
     expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
   });
@@ -134,7 +126,7 @@ describe("PATCH /documents/:id", () => {
   it("422s OCCURRENCE_OUT_OF_RANGE with the count found and changes nothing", async () => {
     const res = await patch("/documents/doc", swap(3));
     expect(res.status).toBe(422);
-    const err = await errorOf(res);
+    const err = await readJson(res);
     expect(err.details).toEqual({ reason: "OCCURRENCE_OUT_OF_RANGE", changeIndex: 0, found: 2 });
     expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
   });
@@ -175,7 +167,7 @@ describe("PATCH /documents/:id with several changes", () => {
       changes: [replace("thirty (30) days", "x"), replace("(30) days. Late", "y")],
     });
     expect(res.status).toBe(422);
-    expect((await errorOf(res)).details.reason).toBe("OVERLAPPING_CHANGES");
+    expect((await readJson(res)).details.reason).toBe("OVERLAPPING_CHANGES");
     expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
     expect(store.history("doc")).toEqual([]);
   });
@@ -185,7 +177,7 @@ describe("PATCH /documents/:id with several changes", () => {
       changes: [replace("Payment", "Each payment"), replace("ninety", "x"), replace("Late", "L")],
     });
     expect(res.status).toBe(422);
-    expect((await errorOf(res)).details).toEqual({ reason: "TARGET_NOT_FOUND", changeIndex: 1 });
+    expect((await readJson(res)).details).toEqual({ reason: "TARGET_NOT_FOUND", changeIndex: 1 });
     expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
     expect(store.history("doc")).toEqual([]);
   });
@@ -216,7 +208,7 @@ describe("ETag and If-Match", () => {
       await patch("/documents/doc", swap());
       const res = await patch(`/documents/doc?dryRun=${dryRun}`, swap(), { "If-Match": '"v1"' });
       expect(res.status).toBe(412);
-      expect((await errorOf(res)).details).toEqual({
+      expect((await readJson(res)).details).toEqual({
         reason: "VERSION_CONFLICT",
         currentVersion: 2,
       });
@@ -262,7 +254,7 @@ describe("PATCH /documents/:id with range changes", () => {
   ])("422s RANGE_OUT_OF_BOUNDS for %s and changes nothing", async (_name, change) => {
     const res = await patch("/documents/doc", { changes: [change] });
     expect(res.status).toBe(422);
-    expect((await errorOf(res)).details).toMatchObject({
+    expect((await readJson(res)).details).toMatchObject({
       reason: "RANGE_OUT_OF_BOUNDS",
       changeIndex: 0,
     });
@@ -277,7 +269,7 @@ describe("PATCH /documents/:id with range changes", () => {
       ],
     });
     expect(res.status).toBe(422);
-    expect((await errorOf(res)).details).toEqual({
+    expect((await readJson(res)).details).toEqual({
       reason: "EXPECTED_TEXT_MISMATCH",
       changeIndex: 1,
     });
@@ -293,7 +285,7 @@ describe("PATCH /documents/:id with range changes", () => {
       ],
     });
     expect(res.status).toBe(422);
-    expect((await errorOf(res)).details.reason).toBe("OVERLAPPING_CHANGES");
+    expect((await readJson(res)).details.reason).toBe("OVERLAPPING_CHANGES");
     expect(store.get("doc")?.version).toBe(1);
   });
 
@@ -312,7 +304,7 @@ describe("PATCH /documents/:id with range changes", () => {
   ])("400s %s", async (_name, change) => {
     const res = await patch("/documents/doc", { changes: [change] });
     expect(res.status).toBe(400);
-    expect((await errorOf(res)).details.reason).toBe("INVALID_PAYLOAD");
+    expect((await readJson(res)).details.reason).toBe("INVALID_PAYLOAD");
     expect(store.get("doc")?.version).toBe(1);
   });
 });

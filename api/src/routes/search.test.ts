@@ -1,19 +1,19 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createApp } from "../app.js";
+import { appWith, expectError, jsonInit, readJson } from "../../test/http.js";
 import type { SearchResponse } from "../domain/types.js";
 import type { ErrorBody } from "../errors.js";
 import { createRuntime } from "../runtime.js";
 
-let app: ReturnType<typeof createApp>;
+let app: ReturnType<typeof appWith>;
 
 beforeEach(() => {
   // The production wiring: seeded store, search and the LLM expander (replay mode in tests).
-  app = createApp(createRuntime().deps);
+  app = appWith(createRuntime().deps);
 });
 
 const get = async (url: string) => {
   const res = await app.request(url);
-  return { status: res.status, body: (await res.json()) as SearchResponse & ErrorBody };
+  return { status: res.status, body: (await readJson(res)) as SearchResponse & ErrorBody };
 };
 
 describe("GET /search against the seed contracts", () => {
@@ -79,15 +79,14 @@ describe("GET /search against the seed contracts", () => {
   it("404s an unknown docId", async () => {
     const { status, body } = await get("/search?q=rent&docId=nope");
     expect(status).toBe(404);
-    expect(body.details?.reason).toBe("DOCUMENT_NOT_FOUND");
+    expectError(body, 404, "DOCUMENT_NOT_FOUND");
   });
 
   it("finds a document created through the API", async () => {
-    const created = await app.request("/documents", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title: "Side letter", text: "The parties agree on xylophones." }),
-    });
+    const created = await app.request(
+      "/documents",
+      jsonInit("POST", { title: "Side letter", text: "The parties agree on xylophones." }),
+    );
     expect(created.status).toBe(201);
     const { body } = await get("/search?q=xylophones");
     expect(body.results[0]?.title).toBe("Side letter");

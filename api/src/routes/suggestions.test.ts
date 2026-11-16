@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { captureLogs } from "../../test/capture-logs.js";
-import { appWith } from "../../test/http.js";
+import { appWith, jsonInit, readJson } from "../../test/http.js";
 import type { LlmService, SuggestionInput } from "../domain/types.js";
 import { createLlmClient } from "../llm/client.js";
 import { createLlmService } from "../llm/service.js";
@@ -21,14 +21,8 @@ function setup(suggest: LlmService["suggest"]) {
   return { app: appWith({ store, llm }), llm, store };
 }
 
-const post = (range: { start: number; end: number }, instruction?: string) => ({
-  method: "POST",
-  headers: { "content-type": "application/json", "x-request-id": "req-7" },
-  body: JSON.stringify({ range, instruction }),
-});
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const read = (res: Response) => res.json() as Promise<any>;
+const post = (range: { start: number; end: number }, instruction?: string) =>
+  jsonInit("POST", { range, instruction }, { "x-request-id": "req-7" });
 
 describe("POST /documents/:id/suggestions", () => {
   it("returns the suggestion and never writes", async () => {
@@ -39,7 +33,7 @@ describe("POST /documents/:id/suggestions", () => {
     }));
     const res = await app.request("/documents/doc/suggestions", post({ start: START, end: END }));
     expect(res.status).toBe(200);
-    expect(await read(res)).toEqual({
+    expect(await readJson(res)).toEqual({
       replacement: "Customer may terminate.",
       rationale: "Uses the defined verb.",
       model: "fake",
@@ -87,7 +81,7 @@ describe("POST /documents/:id/suggestions", () => {
       });
       const res = await app.request("/documents/doc/suggestions", post({ start: 0, end: 10 }));
       expect(res.status).toBe(status);
-      const body = await read(res);
+      const body = await readJson(res);
       expect(body.details).toEqual({ reason: code, llmReason: reason });
       expect(JSON.stringify(body)).not.toContain("abc123");
     });
