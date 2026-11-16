@@ -89,7 +89,8 @@ export function createWorkerIndexer(
       });
       w.on("error", (err) => {
         log.warn("search.index_worker_error", { reason: err.name });
-        failAll(err);
+        // A late error from a replaced worker must not fail the current worker's builds.
+        if (worker === w) failAll(err);
       });
       w.on("exit", () => {
         if (worker === w) failAll(new Error("worker_exited"));

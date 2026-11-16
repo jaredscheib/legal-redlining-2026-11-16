@@ -472,7 +472,7 @@ describe("consistency while reindexing", () => {
     expect(raw.join("")).not.toContain("secretword");
   });
 
-  it("a failed build is logged and leaves the old version searchable", async () => {
+  it("a failed build is logged, keeps the old version searchable, and stops reporting indexing", async () => {
     const indexer: Indexer = {
       mode: "worker",
       build: async () => {
@@ -491,6 +491,8 @@ describe("consistency while reindexing", () => {
     });
     const res = await search.search(q("monthly"));
     expect(res.total).toBe(1);
-    expect(res.indexing).toHaveLength(1);
+    // Clients would otherwise poll forever; the hit still says it is stale.
+    expect(res.indexing).toHaveLength(0);
+    expect(res.results[0]?.stale).toBe(true);
   });
 });

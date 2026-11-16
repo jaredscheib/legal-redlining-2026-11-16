@@ -92,6 +92,9 @@ export function createSearchService(opts: {
    */
   const queued = new Set<string>();
   const pending = new Set<Promise<void>>();
+  /** Documents whose latest reindex failed, by the version that failed. */
+  const failed = new Map<string, number>();
+
   const scheduleReindex = (id: string) => {
     if (queued.has(id)) return;
     queued.add(id);
@@ -116,8 +119,13 @@ export function createSearchService(opts: {
         });
       })
       .catch((err: unknown) => {
+        // Stop reporting this version as "indexing" (clients would poll forever); its hits
+        // stay marked stale until a later commit indexes successfully.
+        const version = store.get(id)?.version;
+        if (version !== undefined) failed.set(id, version);
         log.error("search.index_failed", {
           docId: id,
+          version,
           reason: err instanceof Error ? err.name : "unknown",
         });
       })
@@ -144,7 +152,7 @@ export function createSearchService(opts: {
       const version = store.get(id)?.version;
       if (!entry || version === undefined) continue;
       current.set(id, version);
-      if (entry.version < version) {
+      if (entry.version < version && failed.get(id) !== version) {
         indexing.push({
           docId: id,
           title: entry.title,
