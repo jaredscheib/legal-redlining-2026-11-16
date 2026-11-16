@@ -23,6 +23,7 @@ First, group adjacent terms that together name one legal concept into a phrase (
 Then, for each term or phrase, return up to 3 alternatives that are likely to appear verbatim in contract text (e.g. terminate -> cancel, rescind, end; confidential information -> proprietary information, trade secrets).
 Rules:
 - Prefer words and short phrases drafters actually use in agreements; match the part of speech where possible.
+- The search matches exact words with no stemming, so write each alternative in the form contracts most often use (e.g. singular nouns: "employee", not "employees").
 - Do not repeat the term itself or simple inflections of it (terminate/terminated/termination).
 - Do not include broader concepts or explanations; if a term or phrase has no good equivalents, return an empty list for it.
 - "term" is the single term or the grouped phrase, written with the input words in order.`;
