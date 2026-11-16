@@ -101,6 +101,17 @@ export interface SearchResponse {
   expansion: SearchExpansion;
   total: number;
   results: SearchHit[];
+  /**
+   * Every matching document with its passage count, over all matches (not just this page),
+   * sorted by passages descending, then by the document's best score.
+   */
+  documents: SearchDocumentCount[];
+}
+
+export interface SearchDocumentCount {
+  docId: string;
+  title: string;
+  passages: number;
 }
 
 export interface SearchService {

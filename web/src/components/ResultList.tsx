@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
+import type { DocumentSummary } from "../api/types";
 import { hitKey, type DisplayHit, type SearchState } from "../hooks/useSearch";
+import { plural } from "../lib/text";
 import { Shimmer } from "./Shimmer";
 
 export const EXAMPLE_QUERIES = [
@@ -26,7 +28,9 @@ export function ResultList({
   state,
   activeKey,
   currentVersions,
+  library,
   onOpen,
+  onOpenDocument,
   onExample,
   onRetry,
 }: {
@@ -34,7 +38,10 @@ export function ResultList({
   activeKey: string | null;
   /** Latest known version per document, to flag hits from an older version. */
   currentVersions: Record<string, number>;
+  /** Every document, listed on the home state. */
+  library: DocumentSummary[];
   onOpen: (hit: DisplayHit) => void;
+  onOpenDocument: (docId: string) => void;
   onExample: (q: string) => void;
   onRetry: () => void;
 }) {
@@ -42,16 +49,44 @@ export function ResultList({
 
   if (phase === "idle") {
     return (
-      <div className="empty-state">
-        <h2>Find a clause</h2>
-        <p>Search across every contract. Try one of these:</p>
-        <div className="chips">
-          {EXAMPLE_QUERIES.map((q) => (
-            <button key={q} type="button" className="chip chip-button" onClick={() => onExample(q)}>
-              {q}
-            </button>
-          ))}
+      <div className="home">
+        <div className="empty-state">
+          <h2>Find a clause</h2>
+          <p>Search across every contract. Try one of these:</p>
+          <div className="chips">
+            {EXAMPLE_QUERIES.map((q) => (
+              <button
+                key={q}
+                type="button"
+                className="chip chip-button"
+                onClick={() => onExample(q)}
+              >
+                {q}
+              </button>
+            ))}
+          </div>
         </div>
+        <section aria-labelledby="library-heading">
+          <h2 id="library-heading" className="section-heading">
+            Or open a document
+          </h2>
+          {library.length === 0 ? (
+            <p className="muted">No documents loaded.</p>
+          ) : (
+            <ul className="doc-list" aria-label="All documents">
+              {library.map((d) => (
+                <li key={d.id}>
+                  <button type="button" className="doc-row" onClick={() => onOpenDocument(d.id)}>
+                    <span className="doc-row-title">{d.title}</span>
+                    <span className="doc-row-meta">
+                      {plural(d.length, "character")} · v{currentVersions[d.id] ?? d.version}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     );
   }
@@ -94,6 +129,28 @@ export function ResultList({
   return (
     <>
       <StatusLine state={state} />
+      {state.documents.length > 0 && (
+        <section aria-labelledby="matching-docs-heading" className="matching-docs">
+          <h3 id="matching-docs-heading" className="section-heading">
+            Documents
+          </h3>
+          <ul className="doc-list" aria-label="Matching documents">
+            {state.documents.map((d) => (
+              <li key={d.docId}>
+                <button
+                  type="button"
+                  className="doc-row doc-row-compact"
+                  onClick={() => onOpenDocument(d.docId)}
+                >
+                  <span className="doc-row-title">{d.title}</span>
+                  <span className="doc-row-meta">{plural(d.passages, "passage")}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <h3 className="section-heading">Passages</h3>
       <ul className="result-list" aria-label="Search results">
         {results.map((hit) => {
           const k = hitKey(hit);
@@ -125,32 +182,19 @@ export function ResultList({
 }
 
 function StatusLine({ state }: { state: SearchState }) {
-  const { phase, results, total, expansion, expansionFailed } = state;
+  const { phase, results, total, documents } = state;
   return (
     <div className="status-line" aria-live="polite">
-      <span>
-        {phase === "loading"
-          ? "Searching…"
-          : `${results.length} ${results.length === 1 ? "passage" : "passages"}${
-              total > results.length ? ` of ${total}` : ""
-            }`}
-      </span>
-      {phase === "expanding" && (
-        <span className="chip chip-quiet">
-          <span className="spinner" aria-hidden="true" /> expanding with synonyms…
-        </span>
+      {phase === "loading" ? (
+        <span>Searching…</span>
+      ) : (
+        <h2 className="result-count">
+          {plural(total, "passage")} across {plural(documents.length, "document")}
+          {total > results.length && (
+            <span className="muted result-count-shown"> · showing {results.length}</span>
+          )}
+        </h2>
       )}
-      {expansion?.status === "skipped" && (
-        <span className="chip chip-quiet">
-          synonyms skipped{expansion.reason ? `: ${expansion.reason}` : ""}
-        </span>
-      )}
-      {expansion?.status === "applied" && expansion.added.length > 0 && (
-        <span className="chip chip-quiet" title={expansion.added.join(", ")}>
-          + {expansion.added.length} synonyms
-        </span>
-      )}
-      {expansionFailed && <span className="chip chip-quiet">synonyms unavailable</span>}
     </div>
   );
 }

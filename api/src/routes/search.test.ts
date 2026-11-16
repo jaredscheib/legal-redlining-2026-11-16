@@ -58,6 +58,9 @@ describe("GET /search against the seed contracts", () => {
     const page = await get("/search?q=agreement&limit=3&offset=2");
     expect(page.body.total).toBe(all.body.total);
     expect(page.body.results).toEqual(all.body.results.slice(2, 5));
+    // Document counts cover every match, whatever the page.
+    expect(page.body.documents).toEqual(all.body.documents);
+    expect(all.body.documents.reduce((n, d) => n + d.passages, 0)).toBe(all.body.total);
   });
 
   it("filters by repeated docId", async () => {

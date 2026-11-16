@@ -39,3 +39,8 @@ export function rangeToOffsets(
 export function logEvent(event: string, fields: Record<string, number | string | boolean>) {
   console.info(JSON.stringify({ event, ...fields }));
 }
+
+/** "1 passage", "3 passages": the count with the word, plural unless the count is 1. */
+export function plural(count: number, word: string, many = `${word}s`): string {
+  return `${count.toLocaleString("en-US")} ${count === 1 ? word : many}`;
+}
