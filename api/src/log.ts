@@ -36,10 +36,6 @@ export function withLogContext<T>(ctx: LogContext, fn: () => T): T {
   return context.run(ctx, fn);
 }
 
-export function currentLogContext(): LogContext | undefined {
-  return context.getStore();
-}
-
 function write(level: "info" | "warn" | "error", event: string, fields: LogFields): void {
   const ctx = context.getStore();
   const line = JSON.stringify({ ts: new Date().toISOString(), level, event, ...ctx, ...fields });
@@ -52,3 +48,6 @@ export const log = {
   warn: (event: string, fields: LogFields = {}) => write("warn", event, fields),
   error: (event: string, fields: LogFields = {}) => write("error", event, fields),
 };
+
+/** Milliseconds since `t0` (a `performance.now()` reading), to 0.1 ms, for a log line's `ms`. */
+export const elapsedMs = (t0: number) => Math.round((performance.now() - t0) * 10) / 10;

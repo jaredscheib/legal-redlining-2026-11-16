@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { PASSAGE_MAX_CHARS, SUGGESTION_CONTEXT_CHARS } from "../config.js";
-import { ApiError, notImplemented } from "../errors.js";
+import { ApiError } from "../errors.js";
 import { LlmUnavailable } from "../llm/types.js";
 import { validate } from "../validation.js";
 import { requireDocument } from "./documents.js";
@@ -46,7 +46,6 @@ export const registerSuggestionRoutes: Registrar = (app, { store, llm }) => {
         length: doc.text.length,
       });
     }
-    if (!llm) throw notImplemented("POST /documents/:id/suggestions");
     try {
       const result = await llm.suggest({ ...sliceForSuggestion(doc.text, range), instruction });
       return c.json(result);

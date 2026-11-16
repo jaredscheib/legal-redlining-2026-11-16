@@ -1,6 +1,6 @@
 /**
  * Evals of the intended lawyer flow, driven in-process through createApp.
- * A measurement, not a gate: failures are data. A 501 counts as "not_implemented" at that step.
+ * A measurement, not a gate: failures are data.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -127,7 +127,6 @@ async function call<T>(app: App, url: string, init?: RequestInit): Promise<T> {
   const body = (await res.json().catch(() => ({}))) as {
     details?: { reason?: string };
   };
-  if (res.status === 501) throw new StepFailure("not_implemented");
   if (!res.ok) {
     const reason = body.details?.reason ?? "unknown";
     throw new StepFailure(`http_${res.status}:${reason.toLowerCase()}`);
@@ -156,12 +155,6 @@ function hitCovers(hit: SearchHit, docText: string, needle: string): boolean {
     if (overlaps(hit, { start: i, end: i + needle.length })) return true;
   }
   return false;
-}
-
-function occurrenceAt(text: string, needle: string, start: number): number {
-  let n = 0;
-  for (let i = text.indexOf(needle); i !== -1 && i <= start; i = text.indexOf(needle, i + 1)) n++;
-  return Math.max(n, 1);
 }
 
 /** A distinctive word the replacement added: the longest word not already in the passage. */
@@ -332,7 +325,7 @@ export async function runFlowCase(app: App, sc: FlowScenario): Promise<FlowCaseR
       changes: [
         {
           operation: "replace",
-          target: { text: passage, occurrence: occurrenceAt(doc.text, passage, hit.start) },
+          range: { start: hit.start, end: hit.end, expectedText: passage },
           replacement: suggestion.replacement,
         },
       ],

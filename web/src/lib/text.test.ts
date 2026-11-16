@@ -1,33 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeOccurrence, plural, rangeToOffsets } from "./text";
-
-describe("computeOccurrence", () => {
-  const text = "the fee. the fee. the fee.";
-
-  it("is 1 for the first occurrence", () => {
-    expect(computeOccurrence(text, "the fee", 0)).toBe(1);
-  });
-
-  it("counts earlier occurrences that end at or before the start", () => {
-    expect(computeOccurrence(text, "the fee", 9)).toBe(2);
-    expect(computeOccurrence(text, "the fee", 18)).toBe(3);
-  });
-
-  it("counts an occurrence that ends exactly at the start", () => {
-    expect(computeOccurrence("abab", "ab", 2)).toBe(2);
-  });
-
-  it("counts non-overlapping occurrences only", () => {
-    // "aa" in "aaaa": non-overlapping matches at 0 and 2.
-    expect(computeOccurrence("aaaa", "aa", 2)).toBe(2);
-    // A selection at 1 overlaps the first match, which ends after 1.
-    expect(computeOccurrence("aaaa", "aa", 1)).toBe(1);
-  });
-
-  it("is 1 when the text only appears at the selection", () => {
-    expect(computeOccurrence("one two three", "three", 8)).toBe(1);
-  });
-});
+import { plural, rangeToOffsets } from "./text";
 
 describe("rangeToOffsets", () => {
   it("maps a DOM selection across nested nodes to text offsets", () => {

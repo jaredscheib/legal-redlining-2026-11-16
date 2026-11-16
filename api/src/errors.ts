@@ -24,8 +24,6 @@ export class ApiError extends Error {
 }
 
 export const notFound = (reason: string, message: string) => new ApiError(404, reason, message);
-export const notImplemented = (what: string) =>
-  new ApiError(501, "NOT_IMPLEMENTED", `${what} is not implemented yet`);
 
 export function errorBody(err: ApiError): ErrorBody {
   return {

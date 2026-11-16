@@ -74,9 +74,12 @@ export function search(q: string, expand: boolean, signal?: AbortSignal) {
   return request<SearchResponse>(`/search?${params.toString()}`, { signal });
 }
 
+/** The server's ETag for a document version: `"v<version>"`. */
+export const etag = (version: number) => `"v${version}"`;
+
 /**
- * Previews or applies one change. With `version`, sends `If-Match: "v<version>"` so the server
- * answers 412 VERSION_CONFLICT if the document changed since it was loaded.
+ * Previews or applies one change. With `version`, sends `If-Match: etag(version)` so the
+ * server answers 412 VERSION_CONFLICT if the document changed since it was loaded.
  */
 export function patchDocument(
   id: string,
@@ -87,7 +90,7 @@ export function patchDocument(
   return request<PatchDocumentResponse>(
     `/documents/${encodeURIComponent(id)}?dryRun=${String(dryRun)}`,
     { method: "PATCH", body: JSON.stringify({ changes: [change] }) },
-    version === undefined ? {} : { "If-Match": `"v${version}"` },
+    version === undefined ? {} : { "If-Match": etag(version) },
   );
 }
 
@@ -101,18 +104,15 @@ export function suggest(id: string, range: { start: number; end: number }, instr
   });
 }
 
-/** Claude is unavailable when the suggestions route answers 501, 502 or 503. */
+/** Claude is unavailable when the suggestions route answers 502 or 503. */
 export const isClaudeUnavailable = (err: unknown) =>
-  err instanceof ApiFailure && [501, 502, 503].includes(err.status);
+  err instanceof ApiFailure && [502, 503].includes(err.status);
 
 /** What happened and what to do, for an error shown to the lawyer. */
 export function describeError(err: unknown, action: string): string {
   if (!(err instanceof ApiFailure)) return `Something went wrong while ${action}. Try again.`;
   if (err.status === 0) {
     return `Couldn't reach the server while ${action}. Check your connection or that the server is running, then try again.`;
-  }
-  if (err.status === 501) {
-    return `This server can't do that yet (${action}). Try again after the server is updated.`;
   }
   if (err.status >= 500) {
     return `The server hit an error while ${action} (${err.status}). Try again in a moment.`;
