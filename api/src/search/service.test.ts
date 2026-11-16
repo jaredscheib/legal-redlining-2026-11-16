@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SearchQuery, SearchResponse } from "../domain/types.js";
 import { ApiError } from "../errors.js";
+import { captureLogs } from "../../test/capture-logs.js";
 import { InMemoryDocumentStore } from "../store/memory.js";
 import { SearchIndex } from "./index.js";
+import { createSyncIndexer, type BuiltSegment, type IndexMode, type Indexer } from "./indexer.js";
 import { createSearchService, mergeSpans, type ExpandFn } from "./service.js";
 
 const q = (text: string, extra: Partial<SearchQuery> = {}): SearchQuery => ({
@@ -13,11 +15,15 @@ const q = (text: string, extra: Partial<SearchQuery> = {}): SearchQuery => ({
   ...extra,
 });
 
-function setup(docs: Record<string, string>, expand?: ExpandFn) {
+function setup(
+  docs: Record<string, string>,
+  expand?: ExpandFn,
+  opts: { mode?: IndexMode; indexer?: Indexer } = { mode: "sync" },
+) {
   const store = new InMemoryDocumentStore();
   for (const [id, text] of Object.entries(docs))
     store.create({ id, title: id.toUpperCase(), text });
-  return { store, search: createSearchService({ store, expand }) };
+  return { store, search: createSearchService({ store, expand, ...opts }) };
 }
 
 /** Every highlight must cover text equal (ignoring case) to a term or phrase of the query. */
@@ -196,34 +202,6 @@ describe("createSearchService", () => {
     expect(phrase.documents).toEqual([{ docId: "lease", title: "LEASE", passages: 1 }]);
   });
 
-  it("reindexes on commit: new words are found, removed words are gone", async () => {
-    const { store, search } = setup(docs);
-    expect((await search.search(q("monthly"))).total).toBe(1);
-    store.commit("lease", "Tenant shall pay rent quarterly.", []);
-    expect((await search.search(q("monthly"))).total).toBe(0);
-    const res = await search.search(q("quarterly"));
-    expect(res.total).toBe(1);
-    expect(res.results[0]?.docVersion).toBe(2);
-  });
-
-  it("reindexes a commit after the write returns, coalescing repeated commits", async () => {
-    const { store, search } = setup(docs);
-    const before = search.index.get("lease")?.version;
-    store.commit(
-      "lease",
-      "Tenant shall pay rent quarterly. Tenant shall keep the premises clean.",
-      [],
-    );
-    store.commit("lease", "Tenant shall pay rent yearly.", []);
-    // Nothing has been reindexed synchronously by the commits.
-    expect(search.index.get("lease")?.version).toBe(before);
-    expect(before).toBe(1);
-    const res = await search.search(q("yearly"));
-    expect(res.total).toBe(1);
-    expect(res.results[0]?.docVersion).toBe(3);
-    expect((await search.search(q("quarterly"))).total).toBe(0);
-  });
-
   it("indexes documents created after startup, and stops after close", async () => {
     const { store, search } = setup(docs);
     store.create({ id: "late", title: "Late", text: "Zebra crossing clause." });
@@ -341,5 +319,180 @@ describe("mergeSpans", () => {
       { start: 0, end: 8 },
       { start: 10, end: 12 },
     ]);
+  });
+});
+
+/** An indexer whose builds finish only when the test says so, in any order. */
+function manualIndexer() {
+  const sync = createSyncIndexer();
+  const calls: { version: number; finish: () => Promise<void> }[] = [];
+  const indexer: Indexer = {
+    mode: "worker",
+    build: (doc) =>
+      new Promise<BuiltSegment>((resolve) => {
+        calls.push({
+          version: doc.version,
+          finish: async () => {
+            resolve({ ...(await sync.build(doc)), mode: "worker" });
+            await new Promise((r) => setImmediate(r));
+          },
+        });
+      }),
+    close: () => {},
+  };
+  const started = async () => {
+    await new Promise((r) => setImmediate(r));
+    return calls;
+  };
+  return { indexer, started };
+}
+
+describe("consistency while reindexing", () => {
+  const docs = {
+    lease: "Tenant shall pay rent monthly. A Late Charge applies to late rent; Rent is due.",
+    nda: "Confidential information stays confidential. Late notice is fine.",
+  };
+
+  describe.each(["sync", "worker"] as const)("%s mode", (mode) => {
+    it("answers at once from the old version, says so, then is fresh after idle()", async () => {
+      const { store, search } = setup(docs, undefined, { mode });
+      try {
+        expect(search.indexMode).toBe(mode);
+        store.commit("lease", "Tenant shall pay rent quarterly.", []);
+        const during = await search.search(q("rent"));
+        expect(during.indexing).toEqual([
+          { docId: "lease", title: "LEASE", indexedVersion: 1, currentVersion: 2 },
+        ]);
+        expect(during.results.length).toBeGreaterThan(0);
+        for (const hit of during.results) expect(hit).toMatchObject({ docVersion: 1, stale: true });
+        expect((await search.search(q("quarterly"))).total).toBe(0);
+
+        await search.idle();
+        const after = await search.search(q("rent"));
+        expect(after.indexing).toEqual([]);
+        expect(after.total).toBe(1);
+        expect(after.results[0]).toMatchObject({ docVersion: 2, stale: false });
+        expect((await search.search(q("quarterly"))).total).toBe(1);
+        expect((await search.search(q("monthly"))).total).toBe(0);
+      } finally {
+        search.close();
+      }
+    });
+  });
+
+  it("indexing lists only documents in the query's scope", async () => {
+    const { indexer } = manualIndexer();
+    const { store, search } = setup(docs, undefined, { indexer });
+    store.commit("lease", "Tenant shall pay rent quarterly.", []);
+    expect((await search.search(q("late"))).indexing.map((d) => d.docId)).toEqual(["lease"]);
+    const nda = await search.search(q("late", { docIds: ["nda"] }));
+    expect(nda.indexing).toEqual([]);
+    expect(nda.results.every((h) => !h.stale)).toBe(true);
+  });
+
+  it("a new document is searchable at once (create is synchronous)", async () => {
+    const { indexer } = manualIndexer();
+    const { store, search } = setup(docs, undefined, { indexer });
+    store.create({ id: "new", title: "New", text: "Zebra clause." });
+    const res = await search.search(q("zebra"));
+    expect(res).toMatchObject({ total: 1, indexing: [] });
+    expect(res.results[0]?.stale).toBe(false);
+  });
+
+  it("commits in the same tick coalesce into one build of the latest version", async () => {
+    const { indexer, started } = manualIndexer();
+    const { store, search } = setup(docs, undefined, { indexer });
+    store.commit("lease", "Rent quarterly.", []);
+    store.commit("lease", "Rent yearly.", []);
+    const calls = await started();
+    expect(calls.map((c) => c.version)).toEqual([3]);
+    await calls[0]?.finish();
+    await search.idle();
+    expect(search.index.get("lease")?.version).toBe(3);
+  });
+
+  it("v2's result arriving after v3's is discarded; v3 stays indexed", async () => {
+    const { indexer, started } = manualIndexer();
+    const { store, search } = setup(docs, undefined, { indexer });
+    const { events } = await captureLogs(async () => {
+      store.commit("lease", "Rent quarterly.", []);
+      await started();
+      store.commit("lease", "Rent yearly.", []);
+      const calls = await started();
+      expect(calls.map((c) => c.version)).toEqual([2, 3]);
+      await calls[1]?.finish();
+      expect(search.index.get("lease")?.version).toBe(3);
+      await calls[0]?.finish();
+      await search.idle();
+    });
+    expect(search.index.get("lease")?.version).toBe(3);
+    const res = await search.search(q("yearly"));
+    expect(res).toMatchObject({ total: 1, indexing: [] });
+    expect((await search.search(q("quarterly"))).total).toBe(0);
+    const swaps = events.filter((e) => e.event === "search.index_swap");
+    expect(swaps.map((e) => e.version)).toEqual([3]);
+    expect(events.find((e) => e.event === "search.index_discard")).toMatchObject({
+      docId: "lease",
+      version: 2,
+      indexed: 3,
+    });
+  });
+
+  it("an in-order v2 result is applied while v3 is still building", async () => {
+    const { indexer, started } = manualIndexer();
+    const { store, search } = setup(docs, undefined, { indexer });
+    store.commit("lease", "Rent quarterly.", []);
+    await started();
+    store.commit("lease", "Rent yearly.", []);
+    const calls = await started();
+    await calls[0]?.finish();
+    const mid = await search.search(q("rent"));
+    expect(mid.indexing).toEqual([
+      { docId: "lease", title: "LEASE", indexedVersion: 2, currentVersion: 3 },
+    ]);
+    expect(mid.results[0]).toMatchObject({ docVersion: 2, stale: true });
+    await calls[1]?.finish();
+    await search.idle();
+    expect((await search.search(q("rent"))).indexing).toEqual([]);
+  });
+
+  it("logs mode, queueMs and the swap with ids and counts only", async () => {
+    const { store, search } = setup(docs);
+    const { events, raw } = await captureLogs(async () => {
+      store.commit("lease", "Tenant shall pay secretword rent.", []);
+      await search.idle();
+    });
+    const index = events.find((e) => e.event === "search.index" && e.reason === "commit");
+    expect(index).toMatchObject({ docId: "lease", version: 2, mode: "sync", passages: 1 });
+    expect(typeof index.queueMs).toBe("number");
+    expect(typeof index.ms).toBe("number");
+    const swap = events.find((e) => e.event === "search.index_swap");
+    expect(swap).toMatchObject({ docId: "lease", version: 2 });
+    expect(typeof swap.ms).toBe("number");
+    expect(raw.join("")).not.toContain("secretword");
+  });
+
+  it("a failed build is logged, keeps the old version searchable, and stops reporting indexing", async () => {
+    const indexer: Indexer = {
+      mode: "worker",
+      build: async () => {
+        throw new TypeError("boom");
+      },
+      close: () => {},
+    };
+    const { store, search } = setup(docs, undefined, { indexer });
+    const { events } = await captureLogs(async () => {
+      store.commit("lease", "Rent quarterly.", []);
+      await search.idle();
+    });
+    expect(events.find((e) => e.event === "search.index_failed")).toMatchObject({
+      docId: "lease",
+      reason: "TypeError",
+    });
+    const res = await search.search(q("monthly"));
+    expect(res.total).toBe(1);
+    // Clients would otherwise poll forever; the hit still says it is stale.
+    expect(res.indexing).toHaveLength(0);
+    expect(res.results[0]?.stale).toBe(true);
   });
 });

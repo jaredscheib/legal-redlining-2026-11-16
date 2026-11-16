@@ -4,26 +4,34 @@
  */
 import { EXPANSION_TERM_WEIGHT } from "../config.js";
 import type {
+  Document,
   DocumentStore,
   LlmService,
   SearchDocumentCount,
   SearchExpansion,
   SearchHit,
+  SearchIndexing,
   SearchQuery,
   SearchResponse,
   SearchService,
 } from "../domain/types.js";
 import { notFound } from "../errors.js";
 import { log } from "../log.js";
-import { SearchIndex, type ScoredPassage, type WeightedTerm } from "./index.js";
+import { SearchIndex, type IndexedDoc, type ScoredPassage, type WeightedTerm } from "./index.js";
+import { createIndexer, type IndexMode, type Indexer } from "./indexer.js";
 import { parseQuery, phraseRegExp } from "./query.js";
+import type { Segment } from "./segment.js";
 import { terms as tokenTerms, tokenize } from "./tokenize.js";
 
 export type ExpandFn = LlmService["expand"];
 
 export interface SearchServiceHandle extends SearchService {
   readonly index: SearchIndex;
-  /** Stops following store changes. */
+  /** Where commit reindexes are built. */
+  readonly indexMode: IndexMode;
+  /** Resolves once no reindex is queued or running (tests, shutdown). */
+  idle(): Promise<void>;
+  /** Stops following store changes and stops the index worker. */
   close(): void;
 }
 
@@ -32,11 +40,34 @@ type Span = { start: number; end: number };
 export function createSearchService(opts: {
   store: DocumentStore;
   expand?: ExpandFn;
+  /** Default: worker unless SEARCH_INDEX_WORKER=off. */
+  mode?: IndexMode;
+  /** Overrides `mode` (tests). */
+  indexer?: Indexer;
 }): SearchServiceHandle {
   const { store, expand } = opts;
   const index = new SearchIndex();
+  const indexer = opts.indexer ?? createIndexer(opts.mode);
 
-  const reindex = (id: string, reason: "startup" | "create" | "commit") => {
+  /** Puts a built segment in, unless the index already holds this version or a newer one. */
+  const swapIn = (doc: Document, segment: Segment): IndexedDoc | null => {
+    const indexed = index.get(doc.id)?.version ?? 0;
+    if (index.has(doc.id) && indexed >= doc.version) {
+      log.info("search.index_discard", { docId: doc.id, version: doc.version, indexed });
+      return null;
+    }
+    const t0 = performance.now();
+    const entry = index.swap(doc, segment);
+    log.info("search.index_swap", {
+      docId: doc.id,
+      version: doc.version,
+      ms: Math.round((performance.now() - t0) * 10) / 10,
+    });
+    return entry;
+  };
+
+  /** Startup and create index synchronously, so a new document is searchable at once. */
+  const indexNow = (id: string, reason: "startup" | "create") => {
     const doc = store.get(id);
     if (!doc) return;
     const t0 = performance.now();
@@ -45,37 +76,93 @@ export function createSearchService(opts: {
       docId: id,
       version: doc.version,
       reason,
+      mode: "sync",
       passages: entry.passages.length,
+      queueMs: 0,
       ms: Math.round(performance.now() - t0),
     });
   };
 
   /**
-   * A commit's reindex runs after the PATCH response (setImmediate), so a large document's
-   * ~1 s reindex never delays the write. Commits queued for the same document coalesce: the
-   * queued run reads the latest version. A search waits for queued reindexes first, so it
-   * never returns passages from a version older than the last completed write.
+   * A commit's reindex is built off the request path (in the worker, or after setImmediate in
+   * sync mode) while search keeps answering from the previous version and says so. Commits in
+   * the same tick coalesce: the queued job reads the latest version when it starts. Jobs may
+   * overlap; a result is swapped in only if it is newer than what the index holds, so a late
+   * result for an older version never overwrites a newer one.
    */
-  const pending = new Map<string, Promise<void>>();
+  const queued = new Set<string>();
+  const pending = new Set<Promise<void>>();
+  /** Documents whose latest reindex failed, by the version that failed. */
+  const failed = new Map<string, number>();
+
   const scheduleReindex = (id: string) => {
-    if (pending.has(id)) return;
-    const done = new Promise<void>((resolve) =>
-      setImmediate(() => {
-        pending.delete(id);
-        try {
-          reindex(id, "commit");
-        } finally {
-          resolve();
-        }
-      }),
-    );
-    pending.set(id, done);
+    if (queued.has(id)) return;
+    queued.add(id);
+    const scheduledAt = performance.now();
+    const job = new Promise<void>((resolve) => setImmediate(resolve))
+      .then(async () => {
+        queued.delete(id);
+        const doc = store.get(id);
+        if (!doc) return;
+        const built = await indexer.build(doc);
+        const arrived = performance.now();
+        const entry = swapIn(doc, built.segment);
+        if (!entry) return;
+        log.info("search.index", {
+          docId: id,
+          version: doc.version,
+          reason: "commit",
+          mode: built.mode,
+          passages: entry.passages.length,
+          queueMs: Math.max(0, Math.round(arrived - scheduledAt - built.buildMs)),
+          ms: Math.round(built.buildMs),
+        });
+      })
+      .catch((err: unknown) => {
+        // Stop reporting this version as "indexing" (clients would poll forever); its hits
+        // stay marked stale until a later commit indexes successfully.
+        const version = store.get(id)?.version;
+        if (version !== undefined) failed.set(id, version);
+        log.error("search.index_failed", {
+          docId: id,
+          version,
+          reason: err instanceof Error ? err.name : "unknown",
+        });
+      })
+      .finally(() => pending.delete(job));
+    pending.add(job);
+  };
+
+  /** Resolves once no reindex is queued or running. */
+  const idle = async (): Promise<void> => {
+    while (pending.size > 0) await Promise.all(pending);
   };
 
   const off = store.onChange((e) =>
-    e.kind === "commit" ? scheduleReindex(e.id) : reindex(e.id, e.kind),
+    e.kind === "commit" ? scheduleReindex(e.id) : indexNow(e.id, e.kind),
   );
-  for (const { id } of store.list()) reindex(id, "startup");
+  for (const { id } of store.list()) indexNow(id, "startup");
+
+  /** Documents in `ids` whose index is behind the store, and the store's current versions. */
+  const freshness = (ids: string[]) => {
+    const current = new Map<string, number>();
+    const indexing: SearchIndexing[] = [];
+    for (const id of ids) {
+      const entry = index.get(id);
+      const version = store.get(id)?.version;
+      if (!entry || version === undefined) continue;
+      current.set(id, version);
+      if (entry.version < version && failed.get(id) !== version) {
+        indexing.push({
+          docId: id,
+          title: entry.title,
+          indexedVersion: entry.version,
+          currentVersion: version,
+        });
+      }
+    }
+    return { current, indexing };
+  };
 
   /**
    * `added` is what the response reports: single words and multi-word synonyms ("hold
@@ -113,7 +200,6 @@ export function createSearchService(opts: {
   }
 
   async function search(query: SearchQuery): Promise<SearchResponse> {
-    if (pending.size > 0) await Promise.all(pending.values());
     const t0 = performance.now();
     for (const id of query.docIds ?? []) {
       if (!index.has(id)) throw notFound("DOCUMENT_NOT_FOUND", `Document ${id} not found`);
@@ -154,9 +240,12 @@ export function createSearchService(opts: {
     const addedPhrases = added.filter((a) => a.includes(" "));
     const highlightTerms = new Set([...terms, ...added.filter((a) => !a.includes(" "))]);
     const synonymPhrases = addedPhrases.map((p) => ({ phrase: p, re: phraseRegExp(p) }));
-    const results = matches
-      .slice(query.offset, query.offset + query.limit)
-      .map((s) => toHit(s, passageText(s), highlightTerms, phraseRes, synonymPhrases));
+    // Read after the (async) expansion, so staleness reflects the index the hits came from.
+    const { current, indexing } = freshness(docIds ?? index.ids());
+    const results = matches.slice(query.offset, query.offset + query.limit).map((s) => ({
+      ...toHit(s, passageText(s), highlightTerms, phraseRes, synonymPhrases),
+      stale: s.doc.version < (current.get(s.doc.id) ?? s.doc.version),
+    }));
 
     log.info("search", {
       qLen: query.q.length,
@@ -164,6 +253,7 @@ export function createSearchService(opts: {
       results: matches.length,
       expansion: expansion.status,
       added: added.length,
+      indexing: indexing.length,
       ms: Math.round((performance.now() - t0) * 10) / 10,
     });
     return {
@@ -174,10 +264,20 @@ export function createSearchService(opts: {
       total: matches.length,
       results,
       documents: countByDocument(matches),
+      indexing,
     };
   }
 
-  return { index, search, close: off };
+  return {
+    index,
+    search,
+    idle,
+    indexMode: indexer.mode,
+    close: () => {
+      off();
+      indexer.close();
+    },
+  };
 }
 
 function toHit(
@@ -186,7 +286,7 @@ function toHit(
   highlightTerms: Set<string>,
   phraseRes: RegExp[],
   synonymPhrases: { phrase: string; re: RegExp }[],
-): SearchHit {
+): Omit<SearchHit, "stale"> {
   const p = s.doc.passages[s.passageId] ?? { start: 0, end: 0 };
   const spans: Span[] = [];
   const matched = new Set<string>();
