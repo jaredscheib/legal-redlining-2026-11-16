@@ -1,0 +1,62 @@
+[
+  {
+    "id": "s01-confidential-information-definition",
+    "query": "confidential information definition",
+    "mustFindInTop3": "means all non-public information disclosed by either party",
+    "needsExpansion": false
+  },
+  {
+    "id": "s02-provider-indemnify-infringement",
+    "query": "indemnify infringement claim",
+    "mustFindInTop3": "Provider shall indemnify, defend and hold Customer harmless",
+    "needsExpansion": false
+  },
+  {
+    "id": "s03-security-deposit-return",
+    "query": "return of security deposit",
+    "mustFindInTop3": "Landlord shall return the unapplied balance of the security deposit",
+    "needsExpansion": false
+  },
+  {
+    "id": "s04-quoted-non-solicitation",
+    "query": "\"directly or indirectly, solicit\" employee",
+    "mustFindInTop3": "shall not, directly or indirectly, solicit any employee",
+    "needsExpansion": false
+  },
+  {
+    "id": "s05-quoted-late-charge",
+    "query": "\"late charge\" rent",
+    "mustFindInTop3": "shall pay a late charge equal to five percent",
+    "needsExpansion": false
+  },
+  {
+    "id": "s06-limitation-of-liability",
+    "query": "limitation of liability cap fees",
+    "mustFindInTop3": "LIABILITY ARISING OUT OF THIS AGREEMENT WILL EXCEED THE FEES PAID",
+    "needsExpansion": false
+  },
+  {
+    "id": "s07-terminate-for-convenience",
+    "query": "terminate for convenience",
+    "mustFindInTop3": "Customer may cancel this Agreement at any time, for any reason",
+    "needsExpansion": true
+  },
+  {
+    "id": "s08-lessee-indemnify-lessor",
+    "query": "lessee indemnification of lessor",
+    "mustFindInTop3": "Tenant shall defend and hold harmless Landlord",
+    "needsExpansion": true
+  },
+  {
+    "id": "s09-employee-confidentiality",
+    "query": "staff confidentiality obligations",
+    "mustFindInTop3": "Employee shall not, during or after employment, use or disclose any Proprietary Information",
+    "needsExpansion": true
+  },
+  {
+    "id": "s10-severance-without-cause",
+    "query": "severance if fired without cause",
+    "mustFindInTop3": "separation pay equal to three (3) months of base salary",
+    "needsExpansion": true
+  }
+]

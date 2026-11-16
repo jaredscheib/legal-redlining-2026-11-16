@@ -1,0 +1,100 @@
+Mutual Non-Disclosure Agreement
+
+This Mutual Non-Disclosure Agreement (this "Agreement") is entered into as of the Effective Date
+by and between the party identified as "Party A" on the signature page and the party identified
+as "Party B" on the signature page (each a "Party" and together the "Parties").
+
+RECITALS
+
+The Parties wish to explore a potential business relationship concerning a joint product
+evaluation (the "Purpose"). In connection with the Purpose, each Party may disclose to the
+other certain information that the disclosing Party considers confidential.
+
+NOW, THEREFORE, in consideration of the mutual covenants set forth herein, the Parties agree
+as follows:
+
+1. Definitions.
+1.1 "Confidential Information" means all non-public information disclosed by either party to
+the other, whether orally, visually or in writing, that is designated as confidential or that
+a reasonable person would understand to be confidential given the nature of the information
+and the circumstances of disclosure, including business plans, pricing, customer lists,
+technical data, source code, designs and financial projections.
+1.2 "Disclosing Party" means the Party that discloses Confidential Information, and "Receiving
+Party" means the Party that receives it.
+1.3 "Representatives" means a Party's directors, officers, employees, agents, professional
+advisers and affiliates who have a need to know the Confidential Information for the Purpose.
+
+2. Exclusions.
+2.1 Confidential Information does not include information that the Receiving Party can
+demonstrate (a) is or becomes generally available to the public other than through a breach
+of this Agreement; (b) was rightfully known to the Receiving Party without restriction before
+receipt from the Disclosing Party; (c) is rightfully received from a third party without a
+duty of confidentiality; or (d) is independently developed by the Receiving Party without use
+of or reference to the Disclosing Party's Confidential Information.
+
+3. Obligations of the Receiving Party.
+3.1 The Receiving Party shall hold the Disclosing Party's Confidential Information in strict
+confidence and shall use it solely for the Purpose.
+3.2 The Receiving Party shall protect the Confidential Information using at least the same
+degree of care it uses to protect its own information of a similar nature, and in no event
+less than a reasonable degree of care.
+3.3 The Receiving Party may disclose Confidential Information only to its Representatives who
+are bound by written obligations of confidentiality no less protective than those in this
+Agreement. The Receiving Party is responsible for any breach of this Agreement by its
+Representatives.
+
+4. Compelled Disclosure.
+4.1 If the Receiving Party is required by law, regulation or court order to disclose any
+Confidential Information, it shall give the Disclosing Party prompt written notice, to the
+extent legally permitted, so that the Disclosing Party may seek a protective order, and shall
+disclose only that portion of the Confidential Information that it is legally required to
+disclose.
+
+5. Return or Destruction.
+5.1 Upon the written request of the Disclosing Party, or upon the end of the Purpose, the
+Receiving Party shall promptly return or destroy all Confidential Information in its
+possession and certify such destruction in writing within ten (10) business days.
+
+6. No License; No Warranty.
+6.1 Nothing in this Agreement grants the Receiving Party any license or other right in the
+Disclosing Party's Confidential Information, patents, copyrights or trademarks.
+6.2 ALL CONFIDENTIAL INFORMATION IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+7. Term and Termination.
+7.1 This Agreement commences on the Effective Date and continues for two (2) years unless
+earlier terminated.
+7.2 Either Party may terminate this Agreement at any time upon thirty (30) days' prior written
+notice to the other Party.
+7.3 The obligations in Sections 3, 4 and 5 survive any termination or expiration of this
+Agreement for a period of three (3) years, except that obligations concerning trade secrets
+survive for as long as the information remains a trade secret under applicable law.
+
+8. Remedies.
+8.1 Each Party acknowledges that unauthorized disclosure of Confidential Information may cause
+irreparable harm for which monetary damages would be an inadequate remedy. Accordingly, the
+Disclosing Party is entitled to seek injunctive relief, without posting bond, in addition to
+any other remedy available at law or in equity.
+
+9. No Obligation to Proceed.
+9.1 Neither Party is obligated to enter into any further agreement or transaction. Either
+Party may end discussions concerning the Purpose at any time, for any reason or no reason.
+
+10. Governing Law and Venue.
+10.1 This Agreement is governed by the laws of the State of New York, without regard to its
+conflict of laws principles. The state and federal courts located in New York County have
+exclusive jurisdiction over any dispute arising out of this Agreement.
+
+11. General.
+11.1 This Agreement is the entire agreement between the Parties concerning its subject matter
+and supersedes all prior discussions. It may be amended only in a writing signed by both
+Parties.
+11.2 Neither Party may assign this Agreement without the prior written consent of the other
+Party, except to a successor to all or substantially all of its business.
+11.3 This Agreement may be executed in counterparts, each of which is an original and all of
+which together constitute one instrument.
+
+IN WITNESS WHEREOF, the Parties have executed this Agreement as of the Effective Date.
+
+PARTY A                                   PARTY B
+By: ______________________                By: ______________________
+Title: ___________________                Title: ___________________

@@ -1,0 +1,9 @@
+node_modules
+dist
+data
+coverage
+package-lock.json
+.claude/worktrees
+api/fixtures
+api/seed
+.github/pull_request_template.md
