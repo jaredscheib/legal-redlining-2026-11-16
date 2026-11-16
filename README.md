@@ -448,6 +448,20 @@ was replayed. `make dev` also writes `data/api.log` and `data/web.log`.
   `LLM_MODE=replay make evals` to stay on recordings.
 - **CI** (`.github/workflows/ci.yml`) runs `make check` in replay mode and is started by hand.
 
+## Deploy (Vercel)
+
+`make vercel-build` writes `.vercel/output/` (Build Output API v3): the web app as static
+files and the API bundled into one Node 22 function with the seed contracts and recordings.
+`make vercel-verify` serves that function locally on :8794 in replay mode and checks it. Then
+`vercel deploy --prebuilt --prod`. Set these in the Vercel project:
+
+- `ANTHROPIC_API_KEY`
+- `LLM_MODE=record`: replay a recording first, call the API on a miss (nothing is saved)
+- `LLM_MAX_LIVE_CALLS=200`: live calls per instance before suggestions return 503
+
+Documents live in memory per instance and reset on a cold start. Vercel rejects request
+bodies over 4.5 MB.
+
 ## Project layout
 
 ```

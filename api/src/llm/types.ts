@@ -71,7 +71,13 @@ export type LlmTransport = (
 ) => Promise<TransportResponse>;
 
 export type LlmUnavailableReason =
-  "no_api_key" | "no_recording" | "refusal" | "invalid_output" | "timeout" | "api_error";
+  | "no_api_key"
+  | "no_recording"
+  | "refusal"
+  | "invalid_output"
+  | "timeout"
+  | "api_error"
+  | "cap_reached";
 
 export class LlmUnavailable extends Error {
   constructor(

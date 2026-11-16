@@ -11,6 +11,7 @@ export default tseslint.config(
       "**/dist/**",
       "data/**",
       "**/coverage/**",
+      ".vercel/**",
       ".claude/worktrees/**",
       "api/fixtures/**",
     ],
