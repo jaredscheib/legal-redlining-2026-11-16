@@ -4,7 +4,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { LLM_LEDGER_PATH, PRICES_PER_MTOK, dataPath } from "../config.js";
+import { LLM_LEDGER_PATH, PRICES_PER_MTOK, dataPath, type ModelPrices } from "../config.js";
 import type { LlmUsage } from "./types.js";
 
 export interface LedgerEntry {
@@ -27,7 +27,15 @@ export const defaultLedgerPath = () => LLM_LEDGER_PATH ?? dataPath("llm-ledger.j
 /** Cache writes (5-minute TTL) bill at 1.25x the input price. */
 const CACHE_WRITE_MULTIPLIER = 1.25;
 
-export function costUsd(usage: LlmUsage, prices = PRICES_PER_MTOK): number {
+/** Prices for `model`; an unknown model is priced as the dearest known one, never as free. */
+export function pricesFor(model: string): ModelPrices {
+  const known = PRICES_PER_MTOK[model];
+  if (known) return known;
+  return Object.values(PRICES_PER_MTOK).reduce((a, b) => (b.output > a.output ? b : a));
+}
+
+export function costUsd(usage: LlmUsage, model: string): number {
+  const prices = pricesFor(model);
   const usd =
     (usage.inputTokens * prices.input +
       usage.outputTokens * prices.output +

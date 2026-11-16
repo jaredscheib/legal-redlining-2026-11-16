@@ -27,7 +27,11 @@ function parsePort(raw: string | undefined, fallback: number): number {
 
 export const PORT = parsePort(process.env.PORT, 8787);
 
-export const LLM_MODEL = "claude-sonnet-5-5";
+/** Query expansion is short and latency-bound: the fast model. */
+export const EXPANSION_MODEL = "claude-haiku-5-5";
+/** Drafting a replacement clause: the stronger model. */
+export const SUGGESTION_MODEL = "claude-sonnet-5-5";
+
 /** Read lazily so tests and the evals runner can override it per run. */
 export function llmMode(): LlmMode {
   return parseLlmMode(process.env.LLM_MODE);
@@ -38,12 +42,29 @@ export const TIMEOUTS_MS = {
   suggestion: 20000,
 } as const;
 
-/** USD per 1M tokens for claude-sonnet-5-5. */
-export const PRICES_PER_MTOK = {
-  input: 2,
-  output: 10,
-  cacheRead: 0.1,
-} as const;
+export interface ModelPrices {
+  input: number;
+  output: number;
+  cacheRead: number;
+}
+
+/**
+ * USD per 1M tokens. Cache reads are 0.1x input. Haiku's rate is for prompts of 100K tokens
+ * or fewer, which every call here is.
+ */
+export const PRICES_PER_MTOK: Readonly<Record<string, ModelPrices>> = {
+  "claude-haiku-5-5": { input: 0.1, output: 0.5, cacheRead: 0.01 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.1 },
+};
+
+/** Expansion: alternatives kept per query term or phrase, and in total. */
+export const EXPANSION_MAX_PER_TERM = 3;
+export const EXPANSION_MAX_TOTAL = 9;
+/** Entries in the in-memory expansion cache (LRU, keyed by the normalized term list). */
+export const EXPANSION_CACHE_SIZE = 500;
+
+/** Max chars of document text sent on each side of a passage for a suggestion. */
+export const SUGGESTION_CONTEXT_CHARS = 200;
 
 /** Hard cap is enforced on the Claude platform; we track spend against it locally. */
 export const PROJECT_BUDGET_USD = 30;

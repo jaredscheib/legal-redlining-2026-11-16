@@ -35,9 +35,10 @@ function sortKeys(value: unknown): unknown {
 }
 
 export function cassetteKey(req: CanonicalRequest): string {
-  const { model, system, messages, schema, maxTokens, effort } = req;
+  const { model, system, messages, schema, maxTokens, effort, thinking } = req;
+  // `thinking` is left out of the JSON when unset, so keys recorded before it existed hold.
   return createHash("sha256")
-    .update(canonicalJson({ model, system, messages, schema, maxTokens, effort }))
+    .update(canonicalJson({ model, system, messages, schema, maxTokens, effort, thinking }))
     .digest("hex");
 }
 
