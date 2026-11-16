@@ -83,6 +83,8 @@ export interface SearchHit {
   snippet: string;
   /** Offsets relative to `snippet`. */
   highlights: { start: number; end: number }[];
+  /** Query and expansion terms (lowercased) that occur in this passage. */
+  matchedTerms: string[];
   score: number;
 }
 
