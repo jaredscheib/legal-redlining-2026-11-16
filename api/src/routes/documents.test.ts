@@ -16,10 +16,10 @@ beforeEach(() => {
   app = createApp({ store });
 });
 
-const patch = (url: string, body: unknown) =>
+const patch = (url: string, body: unknown, headers: Record<string, string> = {}) =>
   app.request(url, {
     method: "PATCH",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
 
@@ -189,4 +189,39 @@ describe("PATCH /documents/:id with several changes", () => {
     expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
     expect(store.history("doc")).toEqual([]);
   });
+});
+
+describe("ETag and If-Match", () => {
+  it("GET sets the version ETag", async () => {
+    const res = await app.request("/documents/doc");
+    expect(res.headers.get("ETag")).toBe('"v1"');
+  });
+
+  it("PATCH sets the ETag of the resulting version, and of the current one on a dry run", async () => {
+    const dry = await patch("/documents/doc?dryRun=true", swap());
+    expect(dry.headers.get("ETag")).toBe('"v1"');
+    const applied = await patch("/documents/doc", swap());
+    expect(applied.headers.get("ETag")).toBe('"v2"');
+  });
+
+  it.each(['"v1"', 'W/"v1"', "*", '"v7", "v1"'])("applies with If-Match %s", async (ifMatch) => {
+    const res = await patch("/documents/doc", swap(), { "If-Match": ifMatch });
+    expect(res.status).toBe(200);
+    expect(store.get("doc")?.version).toBe(2);
+  });
+
+  it.each(["true", "false"])(
+    "412s VERSION_CONFLICT on a stale If-Match (dryRun=%s) and changes nothing",
+    async (dryRun) => {
+      await patch("/documents/doc", swap());
+      const res = await patch(`/documents/doc?dryRun=${dryRun}`, swap(), { "If-Match": '"v1"' });
+      expect(res.status).toBe(412);
+      expect((await errorOf(res)).details).toEqual({
+        reason: "VERSION_CONFLICT",
+        currentVersion: 2,
+      });
+      expect(store.get("doc")?.version).toBe(2);
+      expect(store.history("doc")).toHaveLength(1);
+    },
+  );
 });

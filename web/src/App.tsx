@@ -238,6 +238,7 @@ export function App({ version }: { version: string }) {
                 key={`${selection.docId}:${doc.version}:${selection.start}:${selection.end}`}
                 selection={selection}
                 docText={doc.text}
+                docVersion={doc.version}
                 onApplied={onApplied}
                 onReload={() => void loadDoc(doc.id)}
                 onClose={() => {

@@ -8,6 +8,7 @@ import { log } from "../log.js";
 import { validate } from "../validation.js";
 import type { ChangeOp, DocumentStore, PatchDocumentResponse } from "../domain/types.js";
 import type { Registrar } from "./deps.js";
+import { checkIfMatch, etagFor } from "./etag.js";
 
 const CreateDocumentBody = z.object({
   title: z.string().trim().min(1).max(500),
@@ -45,6 +46,7 @@ export const registerDocumentRoutes: Registrar = (app, { store }) => {
 
   app.get("/documents/:id", (c) => {
     const { id, title, text, version } = requireDocument(store, c.req.param("id"));
+    c.header("ETag", etagFor(version));
     return c.json({ id, title, text, version });
   });
 
@@ -65,6 +67,7 @@ export const registerDocumentRoutes: Registrar = (app, { store }) => {
       const doc = requireDocument(store, c.req.param("id"));
       const { changes } = c.req.valid("json");
       const dryRun = c.req.valid("query").dryRun === "true";
+      checkIfMatch(c.req.header("If-Match"), doc.version);
 
       const resolved = resolveChanges(doc.text, changes);
       const ops: ChangeOp[] = resolved.map(({ start, end, oldText, newText }) => ({
@@ -85,6 +88,7 @@ export const registerDocumentRoutes: Registrar = (app, { store }) => {
         ms: Math.round((performance.now() - started) * 10) / 10,
       });
       const body: PatchDocumentResponse = { id: doc.id, version, dryRun, text, redline };
+      c.header("ETag", etagFor(version));
       return c.json(body);
     },
   );

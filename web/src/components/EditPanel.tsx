@@ -3,6 +3,7 @@ import {
   ApiFailure,
   describeError,
   isClaudeUnavailable,
+  isVersionConflict,
   patchDocument,
   suggest,
 } from "../api/client";
@@ -28,6 +29,7 @@ type Busy = "suggest" | "preview" | "apply" | null;
 export function EditPanel({
   selection,
   docText,
+  docVersion,
   onApplied,
   onReload,
   onClose,
@@ -35,6 +37,8 @@ export function EditPanel({
   selection: Selection;
   /** Text of the open document, for computing the target occurrence. */
   docText: string;
+  /** Version of the open document, sent as If-Match on preview and apply. */
+  docVersion: number;
   onApplied: (res: PatchDocumentResponse, replacement: string) => void;
   onReload: () => void;
   onClose: () => void;
@@ -46,7 +50,8 @@ export function EditPanel({
   const [rationale, setRationale] = useState<string | null>(null);
   const [preview, setPreview] = useState<RedlineHunk[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [targetMissing, setTargetMissing] = useState(false);
+  // Set when the document changed under the panel; the fix is to reload it.
+  const [needsReload, setNeedsReload] = useState(false);
 
   const unchanged = replacement === selection.text;
   const tooLongForClaude = selection.end - selection.start > PASSAGE_MAX_CHARS;
@@ -61,8 +66,15 @@ export function EditPanel({
   });
 
   const fail = (err: unknown, action: string) => {
-    if (err instanceof ApiFailure && err.status === 422 && err.reason === "TARGET_NOT_FOUND") {
-      setTargetMissing(true);
+    if (isVersionConflict(err)) {
+      setNeedsReload(true);
+      setError("This document changed since you opened it.");
+    } else if (
+      err instanceof ApiFailure &&
+      err.status === 422 &&
+      err.reason === "TARGET_NOT_FOUND"
+    ) {
+      setNeedsReload(true);
       setError("This passage changed since you selected it, so the edit can't be placed.");
     } else {
       setError(describeError(err, action));
@@ -93,7 +105,7 @@ export function EditPanel({
     setBusy("preview");
     setError(null);
     try {
-      const res = await patchDocument(selection.docId, change(), true);
+      const res = await patchDocument(selection.docId, change(), true, docVersion);
       setPreview(res.redline);
       logEvent("preview", { changes: 1, hunks: res.redline.length });
     } catch (err) {
@@ -107,7 +119,7 @@ export function EditPanel({
     setBusy("apply");
     setError(null);
     try {
-      const res = await patchDocument(selection.docId, change(), false);
+      const res = await patchDocument(selection.docId, change(), false, docVersion);
       logEvent("apply", { changes: 1, hunks: res.redline.length, version: res.version });
       setBusy(null);
       onApplied(res, replacement);
@@ -195,7 +207,7 @@ export function EditPanel({
       {error && (
         <div className="notice notice-error" role="alert">
           <p>{error}</p>
-          {targetMissing && (
+          {needsReload && (
             <button type="button" className="btn" onClick={onReload}>
               Reload document
             </button>
