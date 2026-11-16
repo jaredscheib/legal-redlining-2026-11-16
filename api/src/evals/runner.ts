@@ -157,12 +157,6 @@ function hitCovers(hit: SearchHit, docText: string, needle: string): boolean {
   return false;
 }
 
-function occurrenceAt(text: string, needle: string, start: number): number {
-  let n = 0;
-  for (let i = text.indexOf(needle); i !== -1 && i <= start; i = text.indexOf(needle, i + 1)) n++;
-  return Math.max(n, 1);
-}
-
 /** A distinctive word the replacement added: the longest word not already in the passage. */
 export function probeWord(replacement: string, original: string): string | undefined {
   const words = (s: string) => s.toLowerCase().match(/[a-z]{4,}/g) ?? [];
@@ -331,7 +325,7 @@ export async function runFlowCase(app: App, sc: FlowScenario): Promise<FlowCaseR
       changes: [
         {
           operation: "replace",
-          target: { text: passage, occurrence: occurrenceAt(doc.text, passage, hit.start) },
+          range: { start: hit.start, end: hit.end, expectedText: passage },
           replacement: suggestion.replacement,
         },
       ],

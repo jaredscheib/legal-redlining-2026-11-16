@@ -264,7 +264,11 @@ describe("App", () => {
       changes: [
         {
           operation: "replace",
-          target: { text: "Liability is capped at six months of fees.", occurrence: 1 },
+          range: {
+            start: 0,
+            end: 42,
+            expectedText: "Liability is capped at six months of fees.",
+          },
           replacement: "Liability is capped at twelve months of fees.",
         },
       ],
@@ -479,25 +483,24 @@ describe("App", () => {
     );
   });
 
-  it("offers to reload the document when the target passage changed", async () => {
-    mockApi({
-      "GET /search": () => json(200, searchBody({ total: 1, results: [hit({})] })),
-      "PATCH /documents/msa": () =>
-        json(422, {
-          error: "target not found",
-          code: 422,
-          details: { reason: "TARGET_NOT_FOUND" },
-        }),
-    });
-    const panel = await openFirstHit();
-    fireEvent.change(within(panel).getByLabelText("Replacement"), { target: { value: "x" } });
-    fireEvent.click(within(panel).getByRole("button", { name: "Preview" }));
-    const alert = await within(panel).findByRole("alert");
-    expect(alert).toHaveTextContent(/passage changed/);
-    const before = calls("GET", "/documents/msa").length;
-    fireEvent.click(within(alert).getByRole("button", { name: "Reload document" }));
-    await waitFor(() => expect(calls("GET", "/documents/msa").length).toBe(before + 1));
-  });
+  it.each(["EXPECTED_TEXT_MISMATCH", "RANGE_OUT_OF_BOUNDS"])(
+    "offers to reload the document when the selected passage changed (422 %s)",
+    async (reason) => {
+      mockApi({
+        "GET /search": () => json(200, searchBody({ total: 1, results: [hit({})] })),
+        "PATCH /documents/msa": () =>
+          json(422, { error: "the passage changed", code: 422, details: { reason } }),
+      });
+      const panel = await openFirstHit();
+      fireEvent.change(within(panel).getByLabelText("Replacement"), { target: { value: "x" } });
+      fireEvent.click(within(panel).getByRole("button", { name: "Preview" }));
+      const alert = await within(panel).findByRole("alert");
+      expect(alert).toHaveTextContent(/passage changed/);
+      const before = calls("GET", "/documents/msa").length;
+      fireEvent.click(within(alert).getByRole("button", { name: "Reload document" }));
+      await waitFor(() => expect(calls("GET", "/documents/msa").length).toBe(before + 1));
+    },
+  );
 
   it("sends If-Match with the loaded version and offers a reload on 412", async () => {
     mockApi({

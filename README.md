@@ -360,7 +360,8 @@ on passages that already matched a term.
     fails with 422 instead of silently overwriting someone else's edit.
 - **Targeting by text and occurrence.** That is what a person or a model actually knows ("the
   second 'thirty days'"). The engine resolves every change against the original text before
-  applying any, so changes never shift each other's offsets.
+  applying any, so changes never shift each other's offsets. The UI knows the exact selection,
+  so it sends ranges with `expectedText` instead; a stale selection fails with 422.
 - **Preview is `PATCH ?dryRun=true`.** The preview runs the same resolve, validate and apply
   path as the real write and only skips the commit, so what you preview is what you apply. The
   trade-off against a separate preview resource (say `POST /documents/{id}/previews`): a flag

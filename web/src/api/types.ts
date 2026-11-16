@@ -68,15 +68,12 @@ export interface RedlineHunk {
   segments: Segment[];
 }
 
-/** The UI targets by text and occurrence. */
+/**
+ * The UI targets the selection's [start, end) range (UTF-16 offsets) with `expectedText`, so a
+ * stale selection fails with 422 instead of editing other text. (The API also accepts
+ * `target: {text, occurrence?}`, which the UI does not use.)
+ */
 export interface ReplaceChange {
-  operation: "replace";
-  target: { text: string; occurrence?: number };
-  replacement: string;
-}
-
-/** The API also accepts a [start, end) range (UTF-16 offsets) in place of `target`. */
-export interface ReplaceRangeChange {
   operation: "replace";
   range: { start: number; end: number; expectedText?: string };
   replacement: string;
