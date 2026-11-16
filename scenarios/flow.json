@@ -1,7 +1,7 @@
 [
   {
     "id": "f01-liability-cap",
-    "query": "limitation of liability cap fees",
+    "query": "\"total liability\" cap fees paid",
     "instruction": "Raise the liability cap from six months to twelve months of fees.",
     "expectInReplacement": ["twelve"]
   },
@@ -13,7 +13,7 @@
   },
   {
     "id": "f03-deposit-return-window",
-    "query": "return of security deposit",
+    "query": "\"return the unapplied balance\" security deposit",
     "instruction": "Require the landlord to return the deposit within fifteen days instead of thirty.",
     "expectInReplacement": ["fifteen"]
   }
