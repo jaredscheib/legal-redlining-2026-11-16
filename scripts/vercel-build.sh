@@ -24,6 +24,11 @@ npx esbuild api/src/vercel/handler.ts \
   --define:process.env.GIT_SHA="\"$GIT_SHA\"" \
   --banner:js='import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' \
   --log-level=warning
+# The search index worker is a second entry; indexer.ts finds it beside index.mjs.
+npx esbuild api/src/search/index-worker.ts \
+  --bundle --platform=node --target=node22 --format=esm \
+  --outfile="$FUNC/index-worker.mjs" \
+  --log-level=warning
 cp -R api/seed "$FUNC/seed"
 cp -R api/fixtures/llm "$FUNC/fixtures/llm"
 
@@ -37,5 +42,6 @@ JSON
 
 echo "vercel-build: OK version=$GIT_SHA"
 echo "  $(du -sh "$FUNC/index.mjs" | cut -f1) $FUNC/index.mjs"
+echo "  $(du -sh "$FUNC/index-worker.mjs" | cut -f1) $FUNC/index-worker.mjs"
 echo "  $(ls "$FUNC/seed" | wc -l | tr -d ' ') seed contracts, $(ls "$FUNC/fixtures/llm" | wc -l | tr -d ' ') recordings"
 echo "  $(find "$OUT/static" -type f | wc -l | tr -d ' ') static files"
