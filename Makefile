@@ -7,7 +7,7 @@ export GIT_SHA
 LLM_LEDGER_PATH ?= $(dir $(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null))data/llm-ledger.jsonl
 export LLM_LEDGER_PATH
 
-.PHONY: setup check lint format format-check typecheck test test-fast build smoke evals compare-expansion spend bench dev dev-stop hooks tag
+.PHONY: setup check lint format format-check typecheck test test-fast build smoke vercel-build vercel-verify evals compare-expansion spend bench dev dev-stop hooks tag
 
 setup: ## Install exact dependencies from the lockfile
 	npm ci
@@ -50,6 +50,12 @@ spend: ## $ spent on live LLM calls vs the $30 project budget
 
 bench: ## Search over a 10 MB+ contract: index build ms, median query ms, heap used
 	@LOG_STDOUT=off LOG_FILE=off npm run --silent bench -w api
+
+vercel-build: ## Write .vercel/output/ (static web app + bundled API function) for vercel deploy --prebuilt
+	./scripts/vercel-build.sh
+
+vercel-verify: ## Serve the built function on :8794 (replay, no key) and check the API and static app
+	env -u ANTHROPIC_API_KEY LLM_MODE=replay LOG_STDOUT=off node scripts/vercel-verify.mjs
 
 dev: ## API on 8787 + Vite on 5173 in the background (override with API_PORT / WEB_PORT)
 	@./scripts/dev.sh start
