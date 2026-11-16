@@ -92,6 +92,7 @@ describe("runEvals", () => {
           expansion: { status: "off", added: [] },
           total: results.length,
           results,
+          documents: results.map((r) => ({ docId: r.docId, title: r.title, passages: 1 })),
         };
       },
     };

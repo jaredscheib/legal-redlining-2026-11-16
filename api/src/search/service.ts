@@ -5,6 +5,7 @@
 import { EXPANSION_TERM_WEIGHT } from "../config.js";
 import type {
   DocumentStore,
+  SearchDocumentCount,
   SearchExpansion,
   SearchHit,
   SearchQuery,
@@ -123,7 +124,15 @@ export function createSearchService(opts: {
       expansion: expansion.status,
       ms: Math.round((performance.now() - t0) * 10) / 10,
     });
-    return { query: query.q, terms, phrases, expansion, total: matches.length, results };
+    return {
+      query: query.q,
+      terms,
+      phrases,
+      expansion,
+      total: matches.length,
+      results,
+      documents: countByDocument(matches),
+    };
   }
 
   return { index, search, close: off };
@@ -160,6 +169,20 @@ function toHit(
     matchedTerms: [...highlightTerms].filter((t) => matched.has(t)),
     score: Math.round(s.score * 1e4) / 1e4,
   };
+}
+
+/**
+ * Passage counts per document over `sorted` (best score first): most passages first, ties by
+ * the document's best score. Insertion order is best-score order and the sort is stable.
+ */
+export function countByDocument(sorted: ScoredPassage[]): SearchDocumentCount[] {
+  const byDoc = new Map<string, SearchDocumentCount>();
+  for (const s of sorted) {
+    const entry = byDoc.get(s.doc.id);
+    if (entry) entry.passages += 1;
+    else byDoc.set(s.doc.id, { docId: s.doc.id, title: s.doc.title, passages: 1 });
+  }
+  return [...byDoc.values()].sort((a, b) => b.passages - a.passages);
 }
 
 /** Sorted, with overlapping or touching spans merged. */

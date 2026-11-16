@@ -27,6 +27,7 @@ const searchBody = (over: Partial<SearchResponse>): SearchResponse => ({
   expansion: { status: "off", added: [] },
   total: 0,
   results: [],
+  documents: [],
   ...over,
 });
 
@@ -275,10 +276,10 @@ describe("App", () => {
     });
 
     fireEvent.click(within(panel).getByRole("button", { name: "Apply" }));
-    expect(await screen.findByText("Applied — now version 3, 1 change")).toBeInTheDocument();
+    expect(await screen.findByText("Applied 1 change. Now version 3.")).toBeInTheDocument();
     expect(call("PATCH", "/documents/msa", 1).url.searchParams.get("dryRun")).toBe("false");
     expect(screen.getByTestId("doc-text")).toHaveTextContent(newText);
-    expect(screen.getByText("version 3")).toBeInTheDocument();
+    expect(screen.getByText("v3")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Edit passage" })).not.toBeInTheDocument();
 
     const events = vi
@@ -322,7 +323,7 @@ describe("App", () => {
     });
     fireEvent.click(within(panel).getByRole("button", { name: "Apply" }));
 
-    expect(await screen.findByText("Applied — now version 3, 1 change")).toBeInTheDocument();
+    expect(await screen.findByText("Applied 1 change. Now version 3.")).toBeInTheDocument();
     const fresh = await screen.findByRole("button", { name: /capped at twelve months/ });
     await waitFor(() => expect(calls("GET", "/search")).toHaveLength(4));
     const phases = calls("GET", "/search").map(([u]) =>
@@ -456,13 +457,11 @@ describe("App", () => {
     fireEvent.change(within(panel).getByLabelText("Instruction for Claude (optional)"), {
       target: { value: "make it twelve months" },
     });
-    fireEvent.click(within(panel).getByRole("button", { name: "Suggest with Claude" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Suggest" }));
     expect(
       await within(panel).findByText("Claude unavailable — write the change yourself"),
     ).toBeInTheDocument();
-    expect(
-      within(panel).queryByRole("button", { name: "Suggest with Claude" }),
-    ).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Suggest" })).not.toBeInTheDocument();
     expect(call("POST", "/documents/msa/suggestions").body).toEqual({
       range: { start: 0, end: 42 },
       instruction: "make it twelve months",
@@ -480,7 +479,7 @@ describe("App", () => {
         }),
     });
     const panel = await openFirstHit();
-    fireEvent.click(within(panel).getByRole("button", { name: "Suggest with Claude" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Suggest" }));
     expect(await within(panel).findByText("Claude: Raises the cap.")).toBeInTheDocument();
     expect(within(panel).getByLabelText("Replacement")).toHaveValue(
       "Liability is capped at twelve months of fees.",
@@ -505,5 +504,324 @@ describe("App", () => {
     const before = calls("GET", "/documents/msa").length;
     fireEvent.click(within(alert).getByRole("button", { name: "Reload document" }));
     await waitFor(() => expect(calls("GET", "/documents/msa").length).toBe(before + 1));
+  });
+});
+
+describe("home state", () => {
+  const library = [
+    { id: "msa", title: "SaaS MSA", version: 2, length: 12345 },
+    { id: "nda", title: "Mutual NDA", version: 1, length: 1 },
+  ];
+
+  it("lists every document with its length and version, beside the example chips", async () => {
+    mockApi({ "GET /documents": () => json(200, { documents: library }) });
+    render(<App version="dev" />);
+    const list = await screen.findByRole("list", { name: "All documents" });
+    const rows = within(list).getAllByRole("button");
+    expect(rows.map((r) => r.textContent)).toEqual([
+      "SaaS MSA12,345 characters · v2",
+      "Mutual NDA1 character · v1",
+    ]);
+    expect(screen.getByRole("button", { name: "limitation of liability" })).toBeInTheDocument();
+
+    fireEvent.click(within(list).getByRole("button", { name: /SaaS MSA/ }));
+    expect(await screen.findByTestId("doc-text")).toHaveTextContent(TEXT);
+    // The version sits next to the title at the top of the document.
+    expect(screen.getByRole("heading", { name: "SaaS MSA" }).nextElementSibling).toHaveTextContent(
+      "v2",
+    );
+  });
+
+  it("says so when no documents are loaded", async () => {
+    mockApi({ "GET /documents": () => json(200, { documents: [] }) });
+    render(<App version="dev" />);
+    expect(await screen.findByText("No documents loaded.")).toBeInTheDocument();
+  });
+});
+
+describe("clearing the search", () => {
+  const expanded = (url: URL) =>
+    json(
+      200,
+      searchBody({
+        total: 1,
+        results: [hit({})],
+        documents: [{ docId: "msa", title: "SaaS MSA", passages: 1 }],
+        expansion:
+          url.searchParams.get("expand") === "true"
+            ? { status: "applied", added: ["cap"] }
+            : { status: "off", added: [] },
+      }),
+    );
+
+  it("the clear button empties the box and returns to the home state", async () => {
+    mockApi({ "GET /search": expanded });
+    render(<App version="dev" />);
+    search("liability");
+    expect(await screen.findByText("Also searching:")).toBeInTheDocument();
+
+    const input = screen.getByLabelText("Search contracts");
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(input).toHaveValue("");
+    expect(input).toHaveFocus();
+    expect(screen.getByRole("heading", { name: "Find a clause" })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Search results" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Also searching:")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear search" })).not.toBeInTheDocument();
+  });
+
+  it("emptying the box by typing clears the search and aborts one in flight", async () => {
+    const signals: AbortSignal[] = [];
+    mockApi({
+      "GET /search": (url, init) => {
+        if (url.searchParams.get("q") === "pending") {
+          if (init?.signal) signals.push(init.signal);
+          return new Promise<Response>(() => {});
+        }
+        return expanded(url);
+      },
+    });
+    render(<App version="dev" />);
+    search("liability");
+    expect(await screen.findByText(/is capped at six months/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Search contracts"), { target: { value: "" } });
+    expect(screen.getByRole("heading", { name: "Find a clause" })).toBeInTheDocument();
+    expect(screen.queryByText(/is capped at six months/)).not.toBeInTheDocument();
+
+    search("pending");
+    await waitFor(() => expect(signals).toHaveLength(1));
+    fireEvent.change(screen.getByLabelText("Search contracts"), { target: { value: "" } });
+    expect(signals[0]?.aborted).toBe(true);
+    expect(screen.getByRole("heading", { name: "Find a clause" })).toBeInTheDocument();
+  });
+});
+
+describe("closing the document", () => {
+  it("clears the selection and edit panel but keeps the search results", async () => {
+    mockApi({
+      "GET /search": () =>
+        json(
+          200,
+          searchBody({
+            total: 1,
+            results: [hit({})],
+            documents: [{ docId: "msa", title: "SaaS MSA", passages: 1 }],
+          }),
+        ),
+    });
+    render(<App version="dev" />);
+    expect(screen.queryByRole("button", { name: "Close document" })).not.toBeInTheDocument();
+    search("liability");
+    fireEvent.click(await screen.findByRole("button", { name: /SaaS MSA.*capped at six/s }));
+    expect(await screen.findByRole("region", { name: "Edit passage" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close document" }));
+    expect(screen.queryByTestId("doc-text")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Edit passage" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No document open" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Document" })).toHaveValue("");
+    // The search stays, with no result marked as open.
+    const hitRow = screen.getByRole("button", { name: /SaaS MSA.*capped at six/s });
+    expect(hitRow).not.toHaveAttribute("aria-current");
+    expect(screen.queryByRole("button", { name: "Close document" })).not.toBeInTheDocument();
+  });
+
+  it("returns to the home list when no search is active", async () => {
+    mockApi({});
+    render(<App version="dev" />);
+    const list = await screen.findByRole("list", { name: "All documents" });
+    fireEvent.click(within(list).getByRole("button", { name: /SaaS MSA/ }));
+    await screen.findByTestId("doc-text");
+    fireEvent.click(screen.getByRole("button", { name: "Close document" }));
+    expect(screen.queryByTestId("doc-text")).not.toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "All documents" })).toBeInTheDocument();
+  });
+});
+
+describe("result counts", () => {
+  it("heads the passages with totals and lists matching documents by count", async () => {
+    mockApi({
+      "GET /documents/nda": () =>
+        json(200, { id: "nda", title: "Mutual NDA", text: "Confidential.", version: 1 }),
+      "GET /search": () =>
+        json(
+          200,
+          searchBody({
+            total: 30,
+            results: [hit({})],
+            documents: [
+              { docId: "msa", title: "SaaS MSA", passages: 29 },
+              { docId: "nda", title: "Mutual NDA", passages: 1 },
+            ],
+          }),
+        ),
+    });
+    render(<App version="dev" />);
+    search("liability");
+    expect(
+      await screen.findByRole("heading", { name: /^30 passages across 2 documents/ }),
+    ).toHaveTextContent("30 passages across 2 documents · showing 1");
+    const docs = screen.getByRole("list", { name: "Matching documents" });
+    expect(
+      within(docs)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["SaaS MSA29 passages", "Mutual NDA1 passage"]);
+
+    fireEvent.click(within(docs).getByRole("button", { name: /Mutual NDA/ }));
+    expect(await screen.findByTestId("doc-text")).toHaveTextContent("Confidential.");
+    expect(screen.queryByRole("region", { name: "Edit passage" })).not.toBeInTheDocument();
+  });
+
+  it("uses the singular for one passage in one document", async () => {
+    mockApi({
+      "GET /search": () =>
+        json(
+          200,
+          searchBody({
+            total: 1,
+            results: [hit({})],
+            documents: [{ docId: "msa", title: "SaaS MSA", passages: 1 }],
+          }),
+        ),
+    });
+    render(<App version="dev" />);
+    search("liability");
+    const heading = await screen.findByRole("heading", { name: /across/ });
+    expect(heading).toHaveTextContent(/^1 passage across 1 document$/);
+  });
+
+  it("takes the counts from the latest completed phase", async () => {
+    let releaseExpanded: () => void = () => {};
+    const gate = new Promise<void>((r) => (releaseExpanded = r));
+    mockApi({
+      "GET /search": async (url) => {
+        if (url.searchParams.get("expand") === "false") {
+          return json(
+            200,
+            searchBody({
+              total: 1,
+              results: [hit({})],
+              documents: [{ docId: "msa", title: "SaaS MSA", passages: 1 }],
+            }),
+          );
+        }
+        await gate;
+        return json(
+          200,
+          searchBody({
+            total: 3,
+            expansion: { status: "applied", added: ["cap"] },
+            results: [hit({})],
+            documents: [
+              { docId: "nda", title: "Mutual NDA", passages: 2 },
+              { docId: "msa", title: "SaaS MSA", passages: 1 },
+            ],
+          }),
+        );
+      },
+    });
+    render(<App version="dev" />);
+    search("liability");
+    expect(
+      await screen.findByRole("heading", { name: "1 passage across 1 document" }),
+    ).toBeInTheDocument();
+    releaseExpanded();
+    expect(
+      await screen.findByRole("heading", { name: /^3 passages across 2 documents/ }),
+    ).toBeInTheDocument();
+    const docs = screen.getByRole("list", { name: "Matching documents" });
+    expect(
+      within(docs)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Mutual NDA2 passages", "SaaS MSA1 passage"]);
+  });
+
+  it("keeps the first-phase counts when expansion fails", async () => {
+    mockApi({
+      "GET /search": (url) =>
+        url.searchParams.get("expand") === "true"
+          ? json(500, { error: "boom", code: 500, details: { reason: "INTERNAL" } })
+          : json(
+              200,
+              searchBody({
+                total: 2,
+                results: [hit({}), hit({ start: 43, end: 80 })],
+                documents: [{ docId: "msa", title: "SaaS MSA", passages: 2 }],
+              }),
+            ),
+    });
+    render(<App version="dev" />);
+    search("liability");
+    expect(await screen.findByText("synonyms unavailable")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "2 passages across 1 document" }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("synonyms under the search box", () => {
+  it("lists the added synonyms as chips once expansion is applied", async () => {
+    let releaseExpanded: () => void = () => {};
+    const gate = new Promise<void>((r) => (releaseExpanded = r));
+    mockApi({
+      "GET /search": async (url) => {
+        if (url.searchParams.get("expand") === "false") {
+          return json(200, searchBody({ total: 1, results: [hit({})] }));
+        }
+        await gate;
+        return json(
+          200,
+          searchBody({
+            total: 1,
+            results: [hit({})],
+            expansion: { status: "applied", added: ["cancel", "rescind", "end"] },
+          }),
+        );
+      },
+    });
+    render(<App version="dev" />);
+    const line = screen.getByTestId("synonym-line");
+    expect(line).toBeEmptyDOMElement();
+    search("terminate");
+    // Phase 2 running: the indicator holds the same spot.
+    expect(await within(line).findByText(/expanding with synonyms/)).toBeInTheDocument();
+    releaseExpanded();
+    const chips = await within(line).findByRole("list", { name: "Also searching:" });
+    expect(
+      within(chips)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["cancel", "rescind", "end"]);
+    expect(line).toHaveTextContent("Also searching:cancelrescindend");
+    expect(within(line).queryByText(/expanding with synonyms/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/synonyms$/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the skipped chip, and shows nothing when Synonyms is off", async () => {
+    mockApi({
+      "GET /search": (url) =>
+        json(
+          200,
+          searchBody({
+            total: 1,
+            results: [hit({})],
+            expansion:
+              url.searchParams.get("expand") === "true"
+                ? { status: "skipped", added: [], reason: "quoted phrase" }
+                : { status: "off", added: [] },
+          }),
+        ),
+    });
+    render(<App version="dev" />);
+    search(`"six months"`);
+    const line = screen.getByTestId("synonym-line");
+    expect(await within(line).findByText("synonyms skipped: quoted phrase")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Synonyms" }));
+    await waitFor(() => expect(calls("GET", "/search")).toHaveLength(3));
+    expect(await screen.findByText(/is capped at six months/)).toBeInTheDocument();
+    expect(line).toBeEmptyDOMElement();
   });
 });

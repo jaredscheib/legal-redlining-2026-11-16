@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { describeError, isAbort, search } from "../api/client";
-import type { SearchExpansion, SearchHit } from "../api/types";
+import type { SearchDocumentCount, SearchExpansion, SearchHit } from "../api/types";
 import { logEvent } from "../lib/text";
 
 export interface DisplayHit extends SearchHit {
@@ -14,7 +14,10 @@ export interface SearchState {
   query: string;
   phase: SearchPhase;
   results: DisplayHit[];
+  /** Matching passages across all pages, from the latest completed phase. */
   total: number;
+  /** Per-document passage counts, from the latest completed phase. */
+  documents: SearchDocumentCount[];
   expansion: SearchExpansion | null;
   /** Set when the expanded pass failed; the first-pass results stay. */
   expansionFailed: boolean;
@@ -26,6 +29,7 @@ const initial: SearchState = {
   phase: "idle",
   results: [],
   total: 0,
+  documents: [],
   expansion: null,
   expansionFailed: false,
   error: null,
@@ -84,6 +88,7 @@ export function useSearch() {
         phase: expand ? "expanding" : "done",
         results: shown,
         total: first.total,
+        documents: first.documents,
       });
     } catch (err) {
       if (isAbort(err) || ac.signal.aborted) return;
@@ -107,7 +112,9 @@ export function useSearch() {
         ...s,
         phase: "done",
         results: merged,
-        total: Math.max(s.total, second.total, merged.length),
+        // Counts come from the expanded phase, so the total and the per-document counts agree.
+        total: second.total,
+        documents: second.documents,
         expansion: second.expansion,
       }));
     } catch (err) {

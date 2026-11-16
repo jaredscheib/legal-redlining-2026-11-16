@@ -153,6 +153,49 @@ describe("createSearchService", () => {
     expect(past).toMatchObject({ total: 4, results: [] });
   });
 
+  it("counts passages per document over all matches, not just the page", async () => {
+    const { search } = setup({
+      one: "Widgets clause. Nothing else here.",
+      three: "Widgets first. Widgets second. Widgets third. Unrelated.",
+      two: "Widgets alpha. Widgets beta.",
+      none: "Gadgets only.",
+    });
+    const page = await search.search(q("widgets", { limit: 1, offset: 0 }));
+    expect(page.results).toHaveLength(1);
+    expect(page.total).toBe(6);
+    expect(page.documents).toEqual([
+      { docId: "three", title: "THREE", passages: 3 },
+      { docId: "two", title: "TWO", passages: 2 },
+      { docId: "one", title: "ONE", passages: 1 },
+    ]);
+    const past = await search.search(q("widgets", { offset: 50 }));
+    expect(past.results).toEqual([]);
+    expect(past.documents).toEqual(page.documents);
+    expect((await search.search(q("zebra"))).documents).toEqual([]);
+  });
+
+  it("orders documents with equal counts by their best passage score", async () => {
+    const { search } = setup({
+      // "escrow" three times in one passage outscores a single mention.
+      weak: "Escrow is mentioned. Other text.",
+      strong: "Escrow escrow escrow holds funds. More text.",
+    });
+    const res = await search.search(q("escrow"));
+    expect(res.results[0]?.docId).toBe("strong");
+    expect(res.documents.map((d) => [d.docId, d.passages])).toEqual([
+      ["strong", 1],
+      ["weak", 1],
+    ]);
+  });
+
+  it("documents respect the docId filter and phrase filtering", async () => {
+    const { search } = setup(docs);
+    const nda = await search.search(q("late", { docIds: ["nda"] }));
+    expect(nda.documents).toEqual([{ docId: "nda", title: "NDA", passages: 1 }]);
+    const phrase = await search.search(q('"late charge"'));
+    expect(phrase.documents).toEqual([{ docId: "lease", title: "LEASE", passages: 1 }]);
+  });
+
   it("reindexes on commit: new words are found, removed words are gone", async () => {
     const { store, search } = setup(docs);
     expect((await search.search(q("monthly"))).total).toBe(1);

@@ -36,7 +36,8 @@ export function DocumentView({
       <div className="empty-state">
         <h2>No document open</h2>
         <p>
-          Pick a search result to open its document at that passage, or choose a document above.
+          Pick a search result to open its document at that passage, or open a document from the
+          list.
         </p>
       </div>
     );
@@ -59,7 +60,9 @@ export function DocumentView({
     <article className="doc-view">
       <header className="doc-header">
         <h2>{doc.title}</h2>
-        <span className="tag">version {doc.version}</span>
+        <span className="tag" title={`Version ${doc.version}`}>
+          v{doc.version}
+        </span>
       </header>
       <pre
         ref={textRef}

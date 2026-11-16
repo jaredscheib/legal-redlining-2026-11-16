@@ -44,6 +44,14 @@ export interface SearchResponse {
   expansion: SearchExpansion;
   total: number;
   results: SearchHit[];
+  /** Every matching document with its passage count, over all matches (not just this page). */
+  documents: SearchDocumentCount[];
+}
+
+export interface SearchDocumentCount {
+  docId: string;
+  title: string;
+  passages: number;
 }
 
 export interface Segment {
