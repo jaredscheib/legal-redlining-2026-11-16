@@ -731,6 +731,14 @@ mark {
   margin-bottom: 14px;
 }
 
+.doc-id {
+  margin-left: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  color: var(--muted);
+  user-select: all;
+}
+
 .doc-text {
   margin: 0;
   white-space: pre-wrap;

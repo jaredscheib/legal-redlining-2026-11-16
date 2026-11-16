@@ -63,6 +63,9 @@ export function DocumentView({
         <span className="tag" title={`Version ${doc.version}`}>
           v{doc.version}
         </span>
+        <code className="doc-id" aria-label="Document ID" title="Document ID">
+          {doc.id}
+        </code>
       </header>
       <pre
         ref={textRef}
