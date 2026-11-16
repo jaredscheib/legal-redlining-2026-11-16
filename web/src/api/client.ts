@@ -22,12 +22,17 @@ export class ApiFailure extends Error {
 
 export const isAbort = (err: unknown) => err instanceof DOMException && err.name === "AbortError";
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  headers: Record<string, string> = {},
+): Promise<T> {
   let res: Response;
   try {
+    const all = init.body ? { "content-type": "application/json", ...headers } : headers;
     res = await fetch(path, {
       ...init,
-      headers: init.body ? { "content-type": "application/json" } : undefined,
+      headers: Object.keys(all).length ? all : undefined,
     });
   } catch (err) {
     if (isAbort(err)) throw err;
@@ -69,12 +74,25 @@ export function search(q: string, expand: boolean, signal?: AbortSignal) {
   return request<SearchResponse>(`/search?${params.toString()}`, { signal });
 }
 
-export function patchDocument(id: string, change: ReplaceChange, dryRun: boolean) {
+/**
+ * Previews or applies one change. With `version`, sends `If-Match: "v<version>"` so the server
+ * answers 412 VERSION_CONFLICT if the document changed since it was loaded.
+ */
+export function patchDocument(
+  id: string,
+  change: ReplaceChange,
+  dryRun: boolean,
+  version?: number,
+) {
   return request<PatchDocumentResponse>(
     `/documents/${encodeURIComponent(id)}?dryRun=${String(dryRun)}`,
     { method: "PATCH", body: JSON.stringify({ changes: [change] }) },
+    version === undefined ? {} : { "If-Match": `"v${version}"` },
   );
 }
+
+export const isVersionConflict = (err: unknown) =>
+  err instanceof ApiFailure && err.status === 412 && err.reason === "VERSION_CONFLICT";
 
 export function suggest(id: string, range: { start: number; end: number }, instruction?: string) {
   return request<SuggestionResponse>(`/documents/${encodeURIComponent(id)}/suggestions`, {

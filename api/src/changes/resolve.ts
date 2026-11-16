@@ -1,4 +1,4 @@
-import type { ChangeOp, ReplaceChange } from "../domain/types.js";
+import type { ChangeOp, ReplaceChange, ReplaceRangeChange } from "../domain/types.js";
 import { ApiError } from "../errors.js";
 
 /** A change pinned to offsets in the original text. */
@@ -24,13 +24,41 @@ export function findOccurrence(
   return { found };
 }
 
+function resolveRange(
+  text: string,
+  change: ReplaceRangeChange,
+  changeIndex: number,
+): ResolvedChange {
+  const { start, end, expectedText } = change.range;
+  if (!(0 <= start && start <= end && end <= text.length)) {
+    throw new ApiError(422, "RANGE_OUT_OF_BOUNDS", "range is outside the document", {
+      changeIndex,
+      start,
+      end,
+      length: text.length,
+    });
+  }
+  const oldText = text.slice(start, end);
+  if (expectedText !== undefined && expectedText !== oldText) {
+    throw new ApiError(
+      422,
+      "EXPECTED_TEXT_MISMATCH",
+      "the text at the range differs from expectedText",
+      { changeIndex },
+    );
+  }
+  return { changeIndex, start, end, oldText, newText: change.replacement };
+}
+
 /**
  * Resolves each replace change to `{start, end, oldText, newText}` against `text`.
- * Throws 400 INVALID_PAYLOAD for an empty target, 422 TARGET_NOT_FOUND when there is no
- * occurrence, and 422 OCCURRENCE_OUT_OF_RANGE when there are fewer than requested.
+ * Target changes: 400 INVALID_PAYLOAD for an empty target, 422 TARGET_NOT_FOUND when there is
+ * no occurrence, and 422 OCCURRENCE_OUT_OF_RANGE when there are fewer than requested.
+ * Range changes: 422 RANGE_OUT_OF_BOUNDS and 422 EXPECTED_TEXT_MISMATCH.
  */
 export function resolveChanges(text: string, changes: ReplaceChange[]): ResolvedChange[] {
   return changes.map((change, changeIndex) => {
+    if (change.range !== undefined) return resolveRange(text, change, changeIndex);
     const needle = change.target.text;
     const occurrence = change.target.occurrence ?? 1;
     if (needle.length === 0) {

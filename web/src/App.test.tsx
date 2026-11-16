@@ -505,6 +505,30 @@ describe("App", () => {
     fireEvent.click(within(alert).getByRole("button", { name: "Reload document" }));
     await waitFor(() => expect(calls("GET", "/documents/msa").length).toBe(before + 1));
   });
+
+  it("sends If-Match with the loaded version and offers a reload on 412", async () => {
+    mockApi({
+      "GET /search": () => json(200, searchBody({ total: 1, results: [hit({})] })),
+      "PATCH /documents/msa": () =>
+        json(412, {
+          error: "the document changed since this version",
+          code: 412,
+          details: { reason: "VERSION_CONFLICT", currentVersion: 3 },
+        }),
+    });
+    const panel = await openFirstHit();
+    fireEvent.change(within(panel).getByLabelText("Replacement"), { target: { value: "x" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Apply" }));
+    const alert = await within(panel).findByRole("alert");
+    expect(alert).toHaveTextContent("This document changed since you opened it.");
+
+    const headers = calls("PATCH", "/documents/msa")[0]?.[1]?.headers as Record<string, string>;
+    expect(headers["If-Match"]).toBe('"v2"');
+
+    const before = calls("GET", "/documents/msa").length;
+    fireEvent.click(within(alert).getByRole("button", { name: "Reload document" }));
+    await waitFor(() => expect(calls("GET", "/documents/msa").length).toBe(before + 1));
+  });
 });
 
 describe("home state", () => {

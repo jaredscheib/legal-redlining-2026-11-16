@@ -71,3 +71,54 @@ describe("resolveChanges", () => {
     expect(resolved.map((r) => r.changeIndex)).toEqual([0, 1]);
   });
 });
+
+describe("resolveChanges with a range", () => {
+  const range = (start: number, end: number, replacement: string, expectedText?: string) =>
+    ({
+      operation: "replace",
+      range: expectedText === undefined ? { start, end } : { start, end, expectedText },
+      replacement,
+    }) satisfies ReplaceChange;
+
+  it("takes the text at the half-open range", () => {
+    expect(resolveChanges(TEXT, [range(14, 18, "Charges", "Fees")])).toEqual([
+      { changeIndex: 0, start: 14, end: 18, oldText: "Fees", newText: "Charges" },
+    ]);
+  });
+
+  it("allows an empty range (an insertion) and the full text", () => {
+    expect(resolveChanges(TEXT, [range(0, 0, "All ")])[0]?.oldText).toBe("");
+    expect(resolveChanges(TEXT, [range(0, TEXT.length, "x")])[0]?.oldText).toBe(TEXT);
+  });
+
+  it("counts UTF-16 code units", () => {
+    const text = "a🚀b";
+    expect(resolveChanges(text, [range(1, 3, "!", "🚀")])[0]?.oldText).toBe("🚀");
+  });
+
+  it.each([
+    [-1, 2],
+    [5, 3],
+    [0, TEXT.length + 1],
+  ])("rejects [%i, %i) with 422 RANGE_OUT_OF_BOUNDS", (start, end) => {
+    const err = apiError(() => resolveChanges(TEXT, [replace("Fees", "X"), range(start, end, "")]));
+    expect(err.status).toBe(422);
+    expect(err.reason).toBe("RANGE_OUT_OF_BOUNDS");
+    expect(err.details).toMatchObject({ changeIndex: 1 });
+  });
+
+  it("rejects a differing expectedText with 422 EXPECTED_TEXT_MISMATCH", () => {
+    const err = apiError(() => resolveChanges(TEXT, [range(0, 4, "X", "fees")]));
+    expect(err.status).toBe(422);
+    expect(err.reason).toBe("EXPECTED_TEXT_MISMATCH");
+    expect(err.details).toEqual({ changeIndex: 0 });
+  });
+
+  it("mixes with target changes, each keeping its index", () => {
+    const resolved = resolveChanges(TEXT, [replace("late", "overdue"), range(0, 4, "Charges")]);
+    expect(resolved.map((r) => [r.changeIndex, r.start, r.oldText])).toEqual([
+      [0, 23, "late"],
+      [1, 0, "Fees"],
+    ]);
+  });
+});

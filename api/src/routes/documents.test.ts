@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
+import { MAX_CHANGES_PER_REQUEST } from "../config.js";
 import type { PatchDocumentResponse } from "../domain/types.js";
 import type { ErrorBody } from "../errors.js";
 import { InMemoryDocumentStore } from "../store/memory.js";
@@ -15,10 +16,10 @@ beforeEach(() => {
   app = createApp({ store });
 });
 
-const patch = (url: string, body: unknown) =>
+const patch = (url: string, body: unknown, headers: Record<string, string> = {}) =>
   app.request(url, {
     method: "PATCH",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
 
@@ -101,7 +102,10 @@ describe("PATCH /documents/:id", () => {
       },
     ],
     ["no changes", { changes: [] }],
-    ["more than one change", { changes: [swap().changes[0], swap().changes[0]] }],
+    [
+      `more than ${MAX_CHANGES_PER_REQUEST} changes`,
+      { changes: Array.from({ length: MAX_CHANGES_PER_REQUEST + 1 }, () => swap().changes[0]) },
+    ],
   ])("400s %s with zod issues", async (_name, body) => {
     const res = await patch("/documents/doc", body);
     expect(res.status).toBe(400);
@@ -133,5 +137,182 @@ describe("PATCH /documents/:id", () => {
     const err = await errorOf(res);
     expect(err.details).toEqual({ reason: "OCCURRENCE_OUT_OF_RANGE", changeIndex: 0, found: 2 });
     expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
+  });
+});
+
+describe("PATCH /documents/:id with several changes", () => {
+  const replace = (text: string, replacement: string, occurrence?: number) => ({
+    operation: "replace",
+    target: { text, ...(occurrence ? { occurrence } : {}) },
+    replacement,
+  });
+
+  it("applies three changes in one version, one hunk per change with its changeIndex", async () => {
+    const res = await patch("/documents/doc", {
+      changes: [
+        replace("thirty (30) days", "sixty (60) days", 2),
+        replace("Payment", "Each payment"),
+        replace("thirty (30) days", "fifteen (15) days", 1),
+      ],
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as PatchDocumentResponse;
+    expect(body.version).toBe(2);
+    expect(body.text).toBe(
+      "Each payment is due within fifteen (15) days. Late fees accrue after sixty (60) days.",
+    );
+    expect(body.redline.map((h) => [h.changeIndex, h.start])).toEqual([
+      [0, TEXT.lastIndexOf("thirty")],
+      [1, 0],
+      [2, TEXT.indexOf("thirty")],
+    ]);
+    expect(store.get("doc")).toMatchObject({ text: body.text, version: 2 });
+    expect(store.history("doc")).toHaveLength(1);
+  });
+
+  it("422s OVERLAPPING_CHANGES and changes nothing", async () => {
+    const res = await patch("/documents/doc", {
+      changes: [replace("thirty (30) days", "x"), replace("(30) days. Late", "y")],
+    });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details.reason).toBe("OVERLAPPING_CHANGES");
+    expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
+    expect(store.history("doc")).toEqual([]);
+  });
+
+  it("422s with the failing change's index and applies none of the others", async () => {
+    const res = await patch("/documents/doc", {
+      changes: [replace("Payment", "Each payment"), replace("ninety", "x"), replace("Late", "L")],
+    });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details).toEqual({ reason: "TARGET_NOT_FOUND", changeIndex: 1 });
+    expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
+    expect(store.history("doc")).toEqual([]);
+  });
+});
+
+describe("ETag and If-Match", () => {
+  it("GET sets the version ETag", async () => {
+    const res = await app.request("/documents/doc");
+    expect(res.headers.get("ETag")).toBe('"v1"');
+  });
+
+  it("PATCH sets the ETag of the resulting version, and of the current one on a dry run", async () => {
+    const dry = await patch("/documents/doc?dryRun=true", swap());
+    expect(dry.headers.get("ETag")).toBe('"v1"');
+    const applied = await patch("/documents/doc", swap());
+    expect(applied.headers.get("ETag")).toBe('"v2"');
+  });
+
+  it.each(['"v1"', 'W/"v1"', "*", '"v7", "v1"'])("applies with If-Match %s", async (ifMatch) => {
+    const res = await patch("/documents/doc", swap(), { "If-Match": ifMatch });
+    expect(res.status).toBe(200);
+    expect(store.get("doc")?.version).toBe(2);
+  });
+
+  it.each(["true", "false"])(
+    "412s VERSION_CONFLICT on a stale If-Match (dryRun=%s) and changes nothing",
+    async (dryRun) => {
+      await patch("/documents/doc", swap());
+      const res = await patch(`/documents/doc?dryRun=${dryRun}`, swap(), { "If-Match": '"v1"' });
+      expect(res.status).toBe(412);
+      expect((await errorOf(res)).details).toEqual({
+        reason: "VERSION_CONFLICT",
+        currentVersion: 2,
+      });
+      expect(store.get("doc")?.version).toBe(2);
+      expect(store.history("doc")).toHaveLength(1);
+    },
+  );
+});
+
+describe("PATCH /documents/:id with range changes", () => {
+  const first = TEXT.indexOf("thirty");
+  const second = TEXT.lastIndexOf("thirty");
+  const rangeChange = (start: number, end: number, replacement: string, expectedText?: string) => ({
+    operation: "replace",
+    range: expectedText === undefined ? { start, end } : { start, end, expectedText },
+    replacement,
+  });
+
+  it("mixes range and target changes in one request", async () => {
+    const res = await patch("/documents/doc", {
+      changes: [
+        rangeChange(second, second + 16, "sixty (60) days", "thirty (30) days"),
+        { operation: "replace", target: { text: "Payment" }, replacement: "Each payment" },
+        rangeChange(first, first + 6, "fifteen"),
+      ],
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as PatchDocumentResponse;
+    expect(body.text).toBe(
+      "Each payment is due within fifteen (30) days. Late fees accrue after sixty (60) days.",
+    );
+    expect(body.redline.map((h) => [h.changeIndex, h.start])).toEqual([
+      [0, second],
+      [1, 0],
+      [2, first],
+    ]);
+    expect(store.get("doc")?.version).toBe(2);
+  });
+
+  it.each([
+    ["start > end", rangeChange(10, 5, "x")],
+    ["end past the text", rangeChange(0, TEXT.length + 1, "x")],
+  ])("422s RANGE_OUT_OF_BOUNDS for %s and changes nothing", async (_name, change) => {
+    const res = await patch("/documents/doc", { changes: [change] });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details).toMatchObject({
+      reason: "RANGE_OUT_OF_BOUNDS",
+      changeIndex: 0,
+    });
+    expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
+  });
+
+  it("422s EXPECTED_TEXT_MISMATCH with the change index and changes nothing", async () => {
+    const res = await patch("/documents/doc", {
+      changes: [
+        rangeChange(0, 7, "Each payment", "Payment"),
+        rangeChange(first, first + 6, "x", "ninety"),
+      ],
+    });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details).toEqual({
+      reason: "EXPECTED_TEXT_MISMATCH",
+      changeIndex: 1,
+    });
+    expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
+  });
+
+  it("422s OVERLAPPING_CHANGES when a range overlaps a target", async () => {
+    const res = await patch("/documents/doc", {
+      changes: [
+        rangeChange(first, first + 6, "x"),
+        { operation: "replace", target: { text: "(30) days." }, replacement: "y" },
+        { operation: "replace", target: { text: "thirty (30)" }, replacement: "y" },
+      ],
+    });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details.reason).toBe("OVERLAPPING_CHANGES");
+    expect(store.get("doc")?.version).toBe(1);
+  });
+
+  it.each([
+    [
+      "both target and range",
+      {
+        operation: "replace",
+        target: { text: "Payment" },
+        range: { start: 0, end: 7 },
+        replacement: "x",
+      },
+    ],
+    ["neither target nor range", { operation: "replace", replacement: "x" }],
+    ["a fractional offset", rangeChange(0.5, 2, "x")],
+  ])("400s %s", async (_name, change) => {
+    const res = await patch("/documents/doc", { changes: [change] });
+    expect(res.status).toBe(400);
+    expect((await errorOf(res)).details.reason).toBe("INVALID_PAYLOAD");
+    expect(store.get("doc")?.version).toBe(1);
   });
 });
