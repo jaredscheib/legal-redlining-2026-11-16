@@ -66,17 +66,13 @@ export function wordSegments(oldText: string, newText: string): Segment[] {
  * One hunk per resolved change: the replaced span's offsets in the original text, a little
  * surrounding context, and the word diff of the span only.
  */
-export function buildRedline(
-  text: string,
-  changes: readonly ResolvedChange[],
-  contextChars: number = REDLINE_CONTEXT_CHARS,
-): RedlineHunk[] {
+export function buildRedline(text: string, changes: readonly ResolvedChange[]): RedlineHunk[] {
   return changes.map((c) => ({
     changeIndex: c.changeIndex,
     start: c.start,
     end: c.end,
-    before: contextBefore(text, c.start, contextChars),
-    after: contextAfter(text, c.end, contextChars),
+    before: contextBefore(text, c.start, REDLINE_CONTEXT_CHARS),
+    after: contextAfter(text, c.end, REDLINE_CONTEXT_CHARS),
     segments: wordSegments(c.oldText, c.newText),
   }));
 }

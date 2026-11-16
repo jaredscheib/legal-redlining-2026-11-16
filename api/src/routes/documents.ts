@@ -4,7 +4,7 @@ import { buildRedline } from "../changes/redline.js";
 import { resolveChanges } from "../changes/resolve.js";
 import { MAX_CHANGES_PER_REQUEST } from "../config.js";
 import { notFound } from "../errors.js";
-import { log } from "../log.js";
+import { elapsedMs, log } from "../log.js";
 import { validate } from "../validation.js";
 import type { ChangeOp, DocumentStore, PatchDocumentResponse } from "../domain/types.js";
 import type { Registrar } from "./deps.js";
@@ -99,7 +99,7 @@ export const registerDocumentRoutes: Registrar = (app, { store }) => {
         version,
         changes: changes.length,
         dryRun,
-        ms: Math.round((performance.now() - started) * 10) / 10,
+        ms: elapsedMs(started),
       });
       const body: PatchDocumentResponse = { id: doc.id, version, dryRun, text, redline };
       c.header("ETag", etagFor(version));

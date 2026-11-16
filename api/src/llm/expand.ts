@@ -43,7 +43,6 @@ export type ExpandFn = LlmService["expand"];
 export interface ExpanderOptions {
   model?: string;
   thinking?: Thinking;
-  cacheSize?: number;
   timeoutMs?: number;
 }
 
@@ -115,7 +114,7 @@ export class LruCache<V> {
 export function createExpander(client: LlmClient, opts: ExpanderOptions = {}): ExpandFn {
   const model = opts.model ?? EXPANSION_MODEL;
   const thinking = "thinking" in opts ? opts.thinking : EXPANSION_THINKING;
-  const cache = new LruCache<string[]>(opts.cacheSize ?? EXPANSION_CACHE_SIZE);
+  const cache = new LruCache<string[]>(EXPANSION_CACHE_SIZE);
 
   return async (terms) => {
     const key = cacheKey(terms);

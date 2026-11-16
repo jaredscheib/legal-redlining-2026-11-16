@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { captureLogs } from "../test/capture-logs.js";
-import { createApp } from "./app.js";
+import { appWith } from "../test/http.js";
 import { acceptRequestId } from "./request-id.js";
 import { createSearchService } from "./search/service.js";
 import { InMemoryDocumentStore } from "./store/memory.js";
@@ -9,7 +9,7 @@ import { seedStore } from "./store/seed.js";
 function app() {
   const store = new InMemoryDocumentStore();
   seedStore(store);
-  return createApp({ store, search: createSearchService({ store }) });
+  return appWith({ store, search: createSearchService({ store }) });
 }
 
 describe("acceptRequestId", () => {
@@ -62,7 +62,7 @@ describe("request-id middleware", () => {
     };
     let res: Response | undefined;
     const { events, raw } = await captureLogs(async () => {
-      res = await createApp({ store }).request("/documents", {
+      res = await appWith({ store }).request("/documents", {
         headers: { "x-request-id": "boom-1" },
       });
     });

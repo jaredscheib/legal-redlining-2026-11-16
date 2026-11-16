@@ -65,8 +65,8 @@ export interface ModelPrices {
  * or fewer, which every call here is.
  */
 export const PRICES_PER_MTOK: Readonly<Record<string, ModelPrices>> = {
-  "claude-haiku-5-5": { input: 0.1, output: 0.5, cacheRead: 0.01 },
-  "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.1 },
+  [EXPANSION_MODEL]: { input: 0.1, output: 0.5, cacheRead: 0.01 },
+  [SUGGESTION_MODEL]: { input: 2, output: 10, cacheRead: 0.1 },
 };
 
 /** Expansion: alternatives kept per query term or phrase, and in total. */

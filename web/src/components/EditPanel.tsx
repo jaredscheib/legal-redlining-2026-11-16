@@ -13,7 +13,7 @@ import {
   type RedlineHunk,
   type ReplaceChange,
 } from "../api/types";
-import { computeOccurrence, logEvent } from "../lib/text";
+import { logEvent } from "../lib/text";
 import { Redline } from "./Redline";
 
 export interface Selection {
@@ -25,18 +25,18 @@ export interface Selection {
 
 type Busy = "suggest" | "preview" | "apply" | null;
 
+/** 422 reasons meaning the selected range no longer holds the selected text. */
+const STALE_SELECTION = ["EXPECTED_TEXT_MISMATCH", "RANGE_OUT_OF_BOUNDS"];
+
 /** Edit the selected passage: write or suggest a replacement, preview the redline, apply it. */
 export function EditPanel({
   selection,
-  docText,
   docVersion,
   onApplied,
   onReload,
   onClose,
 }: {
   selection: Selection;
-  /** Text of the open document, for computing the target occurrence. */
-  docText: string;
   /** Version of the open document, sent as If-Match on preview and apply. */
   docVersion: number;
   onApplied: (res: PatchDocumentResponse, replacement: string) => void;
@@ -58,10 +58,7 @@ export function EditPanel({
 
   const change = (): ReplaceChange => ({
     operation: "replace",
-    target: {
-      text: selection.text,
-      occurrence: computeOccurrence(docText, selection.text, selection.start),
-    },
+    range: { start: selection.start, end: selection.end, expectedText: selection.text },
     replacement,
   });
 
@@ -72,7 +69,7 @@ export function EditPanel({
     } else if (
       err instanceof ApiFailure &&
       err.status === 422 &&
-      err.reason === "TARGET_NOT_FOUND"
+      STALE_SELECTION.includes(err.reason)
     ) {
       setNeedsReload(true);
       setError("This passage changed since you selected it, so the edit can't be placed.");

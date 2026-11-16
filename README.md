@@ -269,7 +269,6 @@ Every non-2xx response has the same shape. `code` repeats the HTTP status and
 | 422    | `OVERLAPPING_CHANGES`     | Two changes overlap or start at the same offset                                                          |
 | 422    | `RANGE_OUT_OF_BOUNDS`     | A `range` change outside the document (`details.changeIndex`)                                            |
 | 422    | `EXPECTED_TEXT_MISMATCH`  | A `range` change whose `expectedText` differs (`details.changeIndex`)                                    |
-| 501    | `NOT_IMPLEMENTED`         | The route's service is not configured in this build                                                      |
 | 502    | `LLM_ERROR`               | The model answered with unusable output                                                                  |
 | 503    | `LLM_UNAVAILABLE`         | No API key, no recording in replay mode, timeout or API error                                            |
 | 500    | none                      | Unexpected; the body is generic and the `x-request-id` header matches the `http.unhandled` log line      |
@@ -361,7 +360,8 @@ on passages that already matched a term.
     fails with 422 instead of silently overwriting someone else's edit.
 - **Targeting by text and occurrence.** That is what a person or a model actually knows ("the
   second 'thirty days'"). The engine resolves every change against the original text before
-  applying any, so changes never shift each other's offsets.
+  applying any, so changes never shift each other's offsets. The UI knows the exact selection,
+  so it sends ranges with `expectedText` instead; a stale selection fails with 422.
 - **Preview is `PATCH ?dryRun=true`.** The preview runs the same resolve, validate and apply
   path as the real write and only skips the commit, so what you preview is what you apply. The
   trade-off against a separate preview resource (say `POST /documents/{id}/previews`): a flag

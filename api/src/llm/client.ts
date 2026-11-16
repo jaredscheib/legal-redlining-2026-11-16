@@ -84,7 +84,6 @@ export function createSdkTransport(): LlmTransport {
       const u = response.usage;
       return {
         text,
-        parsed: undefined,
         stopReason: response.stop_reason ?? "unknown",
         refusalCategory: response.stop_details?.category ?? undefined,
         model: response.model,
@@ -222,10 +221,7 @@ export function createLlmClient(opts: LlmClientOptions = {}): LlmClient {
           `model declined (${response.refusalCategory ?? "unspecified"})`,
         );
       }
-      const output =
-        response.parsed !== undefined
-          ? (response.parsed as T)
-          : parseOutput(input.schema, response.text);
+      const output = parseOutput(input.schema, response.text);
       if (mode === "record") {
         saveCassette({
           key,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LlmService, SearchService } from "../domain/types.js";
+import { LlmUnavailable } from "../llm/types.js";
 import { createSearchService } from "../search/service.js";
 import { InMemoryDocumentStore } from "../store/memory.js";
 import { readSeedFiles, seedStore } from "../store/seed.js";
@@ -53,21 +54,7 @@ describe("scenarios", () => {
 });
 
 describe("runEvals", () => {
-  it("baseline: every step that hits a stub fails as not_implemented", async () => {
-    const summary = await runEvals({
-      makeDeps: () => ({ store: seeded() }),
-      llmStats: noLlm,
-      llmMode: "replay",
-      scenarios,
-    });
-    expect(summary.search.hitAt3).toBe(0);
-    expect(summary.search.cases.every((c) => c.reason === "not_implemented")).toBe(true);
-    expect(summary.flow.passRate).toBe(0);
-    expect(summary.flow.failedAt).toEqual({ search: 3 });
-    expect(summary.latencyP50Ms.search).toBeGreaterThanOrEqual(0);
-  });
-
-  it("scores hit@3 and walks the flow until the first unimplemented step", async () => {
+  it("scores hit@3 and walks the flow until the first failing step", async () => {
     // Oracle search: returns the clause containing the expected text, by scenario.
     const store = seeded();
     const search: SearchService = {
@@ -141,11 +128,19 @@ describe("runEvals", () => {
 });
 
 describe("runEvals with the BM25 search service (no expansion)", () => {
+  // No recordings: the suggest step answers 503 and the flow stops there.
+  const noRecording: LlmService = {
+    expand: async () => ({ added: [] }),
+    suggest: async () => {
+      throw new LlmUnavailable("no_recording");
+    },
+  };
+
   it("scores the search scenarios and reaches the suggest step", async () => {
     const summary = await runEvals({
       makeDeps: () => {
         const store = seeded();
-        return { store, search: createSearchService({ store }) };
+        return { store, search: createSearchService({ store }), llm: noRecording };
       },
       llmStats: noLlm,
       llmMode: "replay",
