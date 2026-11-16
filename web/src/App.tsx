@@ -5,6 +5,7 @@ import { DocumentView, type TextRange } from "./components/DocumentView";
 import { EditPanel, type Selection } from "./components/EditPanel";
 import { ResultList } from "./components/ResultList";
 import { SearchBar } from "./components/SearchBar";
+import { SynonymLine } from "./components/SynonymLine";
 import { SynonymToggle } from "./components/SynonymToggle";
 import { hitKey, useSearch, type DisplayHit } from "./hooks/useSearch";
 import { loadSynonyms, saveSynonyms } from "./lib/prefs";
@@ -161,13 +162,16 @@ export function App({ version }: { version: string }) {
     <div className="app">
       <header className="app-header">
         <h1>Redline</h1>
-        <SearchBar
-          value={query}
-          onChange={setQuery}
-          onSearch={onSearch}
-          onClear={onClearSearch}
-          busy={busySearching}
-        />
+        <div className="search-column">
+          <SearchBar
+            value={query}
+            onChange={setQuery}
+            onSearch={onSearch}
+            onClear={onClearSearch}
+            busy={busySearching}
+          />
+          <SynonymLine state={searchState} on={synonyms} />
+        </div>
         <SynonymToggle on={synonyms} onChange={onToggleSynonyms} />
       </header>
       <main className="workspace">

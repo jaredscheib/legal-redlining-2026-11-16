@@ -173,6 +173,43 @@ input[type="text"] {
   flex: 1;
 }
 
+.search-column {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  max-width: 720px;
+}
+
+.search-column .search-bar {
+  max-width: none;
+}
+
+/* Reserves its height when empty so the header never jumps. */
+.synonym-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 24px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.synonym-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip-small {
+  font-size: 0.78rem;
+  padding: 0 8px;
+}
+
 /* The search input with its own clear button inside. */
 .search-field {
   position: relative;

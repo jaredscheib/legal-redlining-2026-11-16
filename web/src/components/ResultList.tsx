@@ -182,7 +182,7 @@ export function ResultList({
 }
 
 function StatusLine({ state }: { state: SearchState }) {
-  const { phase, results, total, documents, expansion, expansionFailed } = state;
+  const { phase, results, total, documents } = state;
   return (
     <div className="status-line" aria-live="polite">
       {phase === "loading" ? (
@@ -195,22 +195,6 @@ function StatusLine({ state }: { state: SearchState }) {
           )}
         </h2>
       )}
-      {phase === "expanding" && (
-        <span className="chip chip-quiet">
-          <span className="spinner" aria-hidden="true" /> expanding with synonyms…
-        </span>
-      )}
-      {expansion?.status === "skipped" && (
-        <span className="chip chip-quiet">
-          synonyms skipped{expansion.reason ? `: ${expansion.reason}` : ""}
-        </span>
-      )}
-      {expansion?.status === "applied" && expansion.added.length > 0 && (
-        <span className="chip chip-quiet" title={expansion.added.join(", ")}>
-          + {expansion.added.length} synonyms
-        </span>
-      )}
-      {expansionFailed && <span className="chip chip-quiet">synonyms unavailable</span>}
     </div>
   );
 }

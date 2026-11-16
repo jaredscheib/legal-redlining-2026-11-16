@@ -556,7 +556,7 @@ describe("clearing the search", () => {
     mockApi({ "GET /search": expanded });
     render(<App version="dev" />);
     search("liability");
-    expect(await screen.findByText("+ 1 synonyms")).toBeInTheDocument();
+    expect(await screen.findByText("Also searching:")).toBeInTheDocument();
 
     const input = screen.getByLabelText("Search contracts");
     fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
@@ -564,7 +564,7 @@ describe("clearing the search", () => {
     expect(input).toHaveFocus();
     expect(screen.getByRole("heading", { name: "Find a clause" })).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Search results" })).not.toBeInTheDocument();
-    expect(screen.queryByText("+ 1 synonyms")).not.toBeInTheDocument();
+    expect(screen.queryByText("Also searching:")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Clear search" })).not.toBeInTheDocument();
   });
 
@@ -756,5 +756,70 @@ describe("result counts", () => {
     expect(
       screen.getByRole("heading", { name: "2 passages across 1 document" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("synonyms under the search box", () => {
+  it("lists the added synonyms as chips once expansion is applied", async () => {
+    let releaseExpanded: () => void = () => {};
+    const gate = new Promise<void>((r) => (releaseExpanded = r));
+    mockApi({
+      "GET /search": async (url) => {
+        if (url.searchParams.get("expand") === "false") {
+          return json(200, searchBody({ total: 1, results: [hit({})] }));
+        }
+        await gate;
+        return json(
+          200,
+          searchBody({
+            total: 1,
+            results: [hit({})],
+            expansion: { status: "applied", added: ["cancel", "rescind", "end"] },
+          }),
+        );
+      },
+    });
+    render(<App version="dev" />);
+    const line = screen.getByTestId("synonym-line");
+    expect(line).toBeEmptyDOMElement();
+    search("terminate");
+    // Phase 2 running: the indicator holds the same spot.
+    expect(await within(line).findByText(/expanding with synonyms/)).toBeInTheDocument();
+    releaseExpanded();
+    const chips = await within(line).findByRole("list", { name: "Also searching:" });
+    expect(
+      within(chips)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["cancel", "rescind", "end"]);
+    expect(line).toHaveTextContent("Also searching:cancelrescindend");
+    expect(within(line).queryByText(/expanding with synonyms/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/synonyms$/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the skipped chip, and shows nothing when Synonyms is off", async () => {
+    mockApi({
+      "GET /search": (url) =>
+        json(
+          200,
+          searchBody({
+            total: 1,
+            results: [hit({})],
+            expansion:
+              url.searchParams.get("expand") === "true"
+                ? { status: "skipped", added: [], reason: "quoted phrase" }
+                : { status: "off", added: [] },
+          }),
+        ),
+    });
+    render(<App version="dev" />);
+    search(`"six months"`);
+    const line = screen.getByTestId("synonym-line");
+    expect(await within(line).findByText("synonyms skipped: quoted phrase")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Synonyms" }));
+    await waitFor(() => expect(calls("GET", "/search")).toHaveLength(3));
+    expect(await screen.findByText(/is capped at six months/)).toBeInTheDocument();
+    expect(line).toBeEmptyDOMElement();
   });
 });
