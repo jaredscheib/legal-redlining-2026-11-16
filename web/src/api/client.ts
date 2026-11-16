@@ -1,0 +1,104 @@
+import type {
+  DocumentBody,
+  DocumentSummary,
+  ErrorBody,
+  PatchDocumentResponse,
+  ReplaceChange,
+  SearchResponse,
+  SuggestionResponse,
+} from "./types";
+
+/** A failed request. `status` is 0 when the server could not be reached. */
+export class ApiFailure extends Error {
+  constructor(
+    readonly status: number,
+    readonly reason: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiFailure";
+  }
+}
+
+export const isAbort = (err: unknown) => err instanceof DOMException && err.name === "AbortError";
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      headers: init.body ? { "content-type": "application/json" } : undefined,
+    });
+  } catch (err) {
+    if (isAbort(err)) throw err;
+    throw new ApiFailure(0, "NETWORK", "Could not reach the server");
+  }
+  if (!res.ok) {
+    let body: Partial<ErrorBody> = {};
+    try {
+      body = (await res.json()) as ErrorBody;
+    } catch {
+      // Non-JSON error body (e.g. a proxy page); fall back to the status alone.
+    }
+    throw new ApiFailure(
+      res.status,
+      body.details?.reason ?? "HTTP_ERROR",
+      body.error ?? `Request failed with status ${res.status}`,
+    );
+  }
+  return (await res.json()) as T;
+}
+
+export function listDocuments(signal?: AbortSignal) {
+  return request<{ documents: DocumentSummary[] }>("/documents", { signal });
+}
+
+export function getDocument(id: string, signal?: AbortSignal) {
+  return request<DocumentBody>(`/documents/${encodeURIComponent(id)}`, { signal });
+}
+
+export const SEARCH_LIMIT = 20;
+
+export function search(q: string, expand: boolean, signal?: AbortSignal) {
+  const params = new URLSearchParams({
+    q,
+    limit: String(SEARCH_LIMIT),
+    offset: "0",
+    expand: String(expand),
+  });
+  return request<SearchResponse>(`/search?${params.toString()}`, { signal });
+}
+
+export function patchDocument(id: string, change: ReplaceChange, dryRun: boolean) {
+  return request<PatchDocumentResponse>(
+    `/documents/${encodeURIComponent(id)}?dryRun=${String(dryRun)}`,
+    { method: "PATCH", body: JSON.stringify({ changes: [change] }) },
+  );
+}
+
+export function suggest(id: string, range: { start: number; end: number }, instruction?: string) {
+  return request<SuggestionResponse>(`/documents/${encodeURIComponent(id)}/suggestions`, {
+    method: "POST",
+    body: JSON.stringify(instruction ? { range, instruction } : { range }),
+  });
+}
+
+/** Claude is unavailable when the suggestions route answers 501, 502 or 503. */
+export const isClaudeUnavailable = (err: unknown) =>
+  err instanceof ApiFailure && [501, 502, 503].includes(err.status);
+
+/** What happened and what to do, for an error shown to the lawyer. */
+export function describeError(err: unknown, action: string): string {
+  if (!(err instanceof ApiFailure)) return `Something went wrong while ${action}. Try again.`;
+  if (err.status === 0) {
+    return `Couldn't reach the server while ${action}. Check your connection or that the server is running, then try again.`;
+  }
+  if (err.status === 501) {
+    return `This server can't do that yet (${action}). Try again after the server is updated.`;
+  }
+  if (err.status >= 500) {
+    return `The server hit an error while ${action} (${err.status}). Try again in a moment.`;
+  }
+  if (err.status === 404) return `${err.message}. It may have been removed; reload the page.`;
+  return `${err.message} (${err.status}). Adjust your input and try again.`;
+}

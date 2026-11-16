@@ -1,21 +1,221 @@
+import { useEffect, useRef, useState } from "react";
+import { describeError, getDocument, isAbort, listDocuments } from "./api/client";
+import type { DocumentBody, DocumentSummary, PatchDocumentResponse } from "./api/types";
+import { DocumentView, type TextRange } from "./components/DocumentView";
+import { EditPanel, type Selection } from "./components/EditPanel";
+import { ResultList } from "./components/ResultList";
+import { SearchBar } from "./components/SearchBar";
+import { SynonymToggle } from "./components/SynonymToggle";
+import { hitKey, useSearch, type DisplayHit } from "./hooks/useSearch";
+import { loadSynonyms, saveSynonyms } from "./lib/prefs";
+
+interface Applied {
+  version: number;
+  changes: number;
+}
+
 export function App({ version }: { version: string }) {
+  const [query, setQuery] = useState("");
+  const { state: searchState, run } = useSearch();
+  const [synonyms, setSynonyms] = useState(loadSynonyms);
+
+  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
+  const [versions, setVersions] = useState<Record<string, number>>({});
+  const [doc, setDoc] = useState<DocumentBody | null>(null);
+  const [docLoading, setDocLoading] = useState(false);
+  const [docError, setDocError] = useState<{ id: string; message: string } | null>(null);
+  const [highlight, setHighlight] = useState<TextRange | null>(null);
+  const [selection, setSelection] = useState<Selection | null>(null);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [applied, setApplied] = useState<Applied | null>(null);
+  // Set when a clicked hit predates the loaded document, so its offsets may be wrong.
+  const [staleHit, setStaleHit] = useState(false);
+  const docRequest = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const ac = new AbortController();
+    listDocuments(ac.signal)
+      .then(({ documents }) => {
+        setDocuments(documents);
+        setVersions(Object.fromEntries(documents.map((d) => [d.id, d.version])));
+      })
+      .catch(() => {
+        // The picker is a convenience; search and result clicks still open documents.
+      });
+    return () => ac.abort();
+  }, []);
+
+  const loadDoc = async (id: string, range?: TextRange, hitVersion?: number) => {
+    docRequest.current?.abort();
+    const ac = new AbortController();
+    docRequest.current = ac;
+    setDocLoading(true);
+    setDocError(null);
+    setStaleHit(false);
+    setSelection(null);
+    setHighlight(null);
+    try {
+      const loaded = await getDocument(id, ac.signal);
+      if (ac.signal.aborted) return;
+      setDoc(loaded);
+      setVersions((v) => ({ ...v, [loaded.id]: loaded.version }));
+      if (range) openRange(loaded, range, hitVersion);
+    } catch (err) {
+      if (isAbort(err) || ac.signal.aborted) return;
+      setDocError({ id, message: describeError(err, "opening the document") });
+    } finally {
+      if (!ac.signal.aborted) setDocLoading(false);
+    }
+  };
+
+  const selectRange = (d: DocumentBody, range: TextRange) => {
+    const end = Math.min(range.end, d.text.length);
+    if (end <= range.start) return;
+    setStaleHit(false);
+    setHighlight({ start: range.start, end });
+    setSelection({ docId: d.id, start: range.start, end, text: d.text.slice(range.start, end) });
+    setApplied(null);
+  };
+
+  /** Opens a search hit's range, unless the hit is from an older version of the document. */
+  const openRange = (d: DocumentBody, range: TextRange, hitVersion?: number) => {
+    if (hitVersion !== undefined && hitVersion < d.version) {
+      setSelection(null);
+      setHighlight(null);
+      setApplied(null);
+      setStaleHit(true);
+      return;
+    }
+    selectRange(d, range);
+  };
+
+  const onSearch = (q: string) => {
+    setActiveKey(null);
+    void run(q, synonyms);
+  };
+
+  const onToggleSynonyms = (on: boolean) => {
+    setSynonyms(on);
+    saveSynonyms(on);
+    if (searchState.query) void run(searchState.query, on);
+  };
+
+  const onExample = (q: string) => {
+    setQuery(q);
+    onSearch(q);
+  };
+
+  const openHit = (hit: DisplayHit) => {
+    setActiveKey(hitKey(hit));
+    const range = { start: hit.start, end: hit.end };
+    if (doc && doc.id === hit.docId && !docLoading) openRange(doc, range, hit.docVersion);
+    else void loadDoc(hit.docId, range, hit.docVersion);
+  };
+
+  const onApplied = (res: PatchDocumentResponse, replacement: string) => {
+    if (!doc || !selection) return;
+    setDoc({ ...doc, text: res.text, version: res.version });
+    setVersions((v) => ({ ...v, [res.id]: res.version }));
+    setHighlight({ start: selection.start, end: selection.start + replacement.length });
+    setSelection(null);
+    setApplied({ version: res.version, changes: 1 });
+    // Re-run the search so result offsets match the new text.
+    if (searchState.query) void run(searchState.query, synonyms);
+  };
+
+  const busySearching = searchState.phase === "loading" || searchState.phase === "expanding";
+
   return (
     <div className="app">
-      <header>
+      <header className="app-header">
         <h1>Redline</h1>
+        <SearchBar value={query} onChange={setQuery} onSearch={onSearch} busy={busySearching} />
+        <SynonymToggle on={synonyms} onChange={onToggleSynonyms} />
       </header>
-      <main>
-        <label htmlFor="search">Search contracts</label>
-        <input
-          id="search"
-          type="search"
-          disabled
-          placeholder="Search coming soon"
-          aria-describedby="search-hint"
-        />
-        <p id="search-hint">Search coming soon</p>
+      <main className="workspace">
+        <section className="results-pane" aria-label="Results">
+          <ResultList
+            state={searchState}
+            activeKey={activeKey}
+            currentVersions={versions}
+            onOpen={openHit}
+            onExample={onExample}
+            onRetry={() => onSearch(searchState.query)}
+          />
+        </section>
+        <section className="doc-pane" aria-label="Document">
+          <div className="doc-toolbar">
+            <label htmlFor="doc-picker">Document</label>
+            <select
+              id="doc-picker"
+              value={doc?.id ?? ""}
+              onChange={(e) => {
+                if (e.target.value) void loadDoc(e.target.value);
+              }}
+            >
+              <option value="" disabled>
+                {documents.length ? "Choose a document…" : "No documents loaded"}
+              </option>
+              {documents.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="doc-scroll">
+            {docError ? (
+              <div className="notice notice-error" role="alert">
+                <p>{docError.message}</p>
+                <button type="button" className="btn" onClick={() => void loadDoc(docError.id)}>
+                  Try again
+                </button>
+              </div>
+            ) : (
+              <DocumentView
+                doc={doc}
+                loading={docLoading}
+                highlight={highlight}
+                onSelectText={(range) => {
+                  if (doc) selectRange(doc, range);
+                }}
+              />
+            )}
+          </div>
+          <div className="dock">
+            {selection && doc ? (
+              <EditPanel
+                key={`${selection.docId}:${doc.version}:${selection.start}:${selection.end}`}
+                selection={selection}
+                docText={doc.text}
+                onApplied={onApplied}
+                onReload={() => void loadDoc(doc.id)}
+                onClose={() => {
+                  setSelection(null);
+                  setHighlight(null);
+                }}
+              />
+            ) : staleHit ? (
+              <p className="notice notice-quiet" role="status">
+                This passage is from an older version. Results refresh once indexing catches up, or
+                select the text in the document.
+              </p>
+            ) : applied ? (
+              <p className="notice notice-success" role="status">
+                Applied — now version {applied.version}, {applied.changes}{" "}
+                {applied.changes === 1 ? "change" : "changes"}
+              </p>
+            ) : (
+              <p className="muted dock-hint">
+                {doc
+                  ? "Select any text in the document to edit it."
+                  : "Open a document to start editing."}
+              </p>
+            )}
+          </div>
+        </section>
       </main>
-      <footer>
+      <footer className="app-footer">
         <small>Version {version}</small>
       </footer>
     </div>
