@@ -1,0 +1,46 @@
+{
+  "key": "51d9730d0feba65efd7f38f27a558788004f86b13148d99017284fa416949729",
+  "op": "suggest",
+  "model": "claude-sonnet-5-5",
+  "request": {
+    "model": "claude-sonnet-5-5",
+    "system": "You are a contract drafting assistant inside a legal redlining tool.\nYou receive a selected passage from a contract, some surrounding text for context, and optionally an instruction from the lawyer.\nReturn replacement text for the selected passage only, plus a one-line rationale.\nRules:\n- \"replacement\" must replace exactly the selected passage: do not include any of the surrounding context, and do not add new clauses beyond what the instruction requires.\n- Change only what the instruction asks. If there is no instruction, make a minimal edit that improves clarity and precision without changing the commercial or legal effect.\n- Keep every defined term exactly as written, including capitalization (e.g. \"Confidential Information\", \"Company\", \"Customer\"), unless the instruction says otherwise. Do not introduce new defined terms unless the instruction requires it.\n- Keep clause numbering (e.g. a leading \"6.2\"), cross-references and numerals-with-words formats (e.g. \"thirty (30) days\") exactly as in the original, unless the instruction says otherwise.\n- Keep every qualifier and limiting word of the original (e.g. \"invoiced\", \"undisputed\", \"reasonable\", \"material\", \"solely\") unless the instruction says otherwise.\n- Match the drafting style and tense of the original. Do not wrap the replacement in quotation marks.\n- \"rationale\" is one short sentence describing what changed and why.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "<context_before>tion of this Agreement.\n8.3 The indemnified party shall give prompt notice of the claim, reasonable cooperation and sole\ncontrol of the defense to the indemnifying party.\n\n9. Limitation of Liability.\n</context_before>\n<selected_passage>9.1 EXCEPT FOR INDEMNIFICATION OBLIGATIONS AND BREACHES OF SECTION 6, NEITHER PARTY'S TOTAL\nLIABILITY ARISING OUT OF THIS AGREEMENT WILL EXCEED THE FEES PAID BY CUSTOMER IN THE SIX (6)\nMONTHS PRECEDING THE EVENT GIVING RISE TO THE CLAIM.</selected_passage>\n<context_after>\n9.2 NEITHER PARTY IS LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL OR PUNITIVE\nDAMAGES, OR FOR LOST PROFITS OR REVENUE, EVEN IF ADVISED OF THEIR POSSIBILITY.\n\n10. Term, Renewal and Canc</context_after>\n<instruction>Raise the liability cap from six months to twelve months of fees.</instruction>"
+      }
+    ],
+    "schema": {
+      "type": "object",
+      "properties": {
+        "replacement": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "replacement",
+        "rationale"
+      ],
+      "description": "{$schema: \"https://json-schema.org/draft/2020-12/schema\"}"
+    },
+    "maxTokens": 1024,
+    "effort": "low"
+  },
+  "response": {
+    "text": "{\"replacement\":\"9.1 EXCEPT FOR INDEMNIFICATION OBLIGATIONS AND BREACHES OF SECTION 6, NEITHER PARTY'S TOTAL\\nLIABILITY ARISING OUT OF THIS AGREEMENT WILL EXCEED THE FEES PAID BY CUSTOMER IN THE TWELVE (12)\\nMONTHS PRECEDING THE EVENT GIVING RISE TO THE CLAIM.\",\"rationale\":\"Changed the look-back period for the liability cap from six (6) months to twelve (12) months as instructed, leaving all other terms unchanged.\"}",
+    "stopReason": "end_turn",
+    "model": "claude-sonnet-5-5"
+  },
+  "usage": {
+    "inputTokens": 1150,
+    "outputTokens": 225,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "recordedAt": "2026-11-16T22:29:38.045Z"
+}
