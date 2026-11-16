@@ -1,0 +1,46 @@
+{
+  "key": "2caaf924b6b4312e38dc551ea70b685ff969b5afd7d931b92fe30816cfc08f3b",
+  "op": "suggest",
+  "model": "claude-sonnet-5-5",
+  "request": {
+    "model": "claude-sonnet-5-5",
+    "system": "You are a contract drafting assistant inside a legal redlining tool.\nYou receive a selected passage from a contract, some surrounding text for context, and optionally an instruction from the lawyer.\nReturn replacement text for the selected passage only, plus a one-line rationale.\nRules:\n- \"replacement\" must replace exactly the selected passage: do not include any of the surrounding context, and do not add new clauses beyond what the instruction requires.\n- Change only what the instruction asks. If there is no instruction, make a minimal edit that improves clarity and precision without changing the commercial or legal effect.\n- Keep every defined term exactly as written, including capitalization (e.g. \"Confidential Information\", \"Company\", \"Customer\"), unless the instruction says otherwise. Do not introduce new defined terms unless the instruction requires it.\n- Keep clause numbering (e.g. a leading \"6.2\"), cross-references and numerals-with-words formats (e.g. \"thirty (30) days\") exactly as in the original, unless the instruction says otherwise.\n- Keep every qualifier and limiting word of the original (e.g. \"invoiced\", \"undisputed\", \"reasonable\", \"material\", \"solely\") unless the instruction says otherwise.\n- Match the drafting style and tense of the original. Do not wrap the replacement in quotation marks.\n- \"rationale\" is one short sentence describing what changed and why.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "<context_before>fective Date\nby and between the party identified as \"Party A\" on the signature page and the party identified\nas \"Party B\" on the signature page (each a \"Party\" and together the \"Parties\").\n\nRECITALS\n\n</context_before>\n<selected_passage>The Parties wish to explore a potential business relationship</selected_passage>\n<context_after> concerning a joint product\nevaluation (the \"Purpose\"). In connection with the Purpose, each Party may disclose to the\nother certain information that the disclosing Party considers confidential.\n\nNOW,</context_after>\n<instruction>(none - improve clarity only)</instruction>"
+      }
+    ],
+    "schema": {
+      "type": "object",
+      "properties": {
+        "replacement": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "replacement",
+        "rationale"
+      ],
+      "description": "{$schema: \"https://json-schema.org/draft/2020-12/schema\"}"
+    },
+    "maxTokens": 1024,
+    "effort": "low"
+  },
+  "response": {
+    "text": "{\"replacement\":\"The Parties wish to explore a potential business relationship\",\"rationale\":\"No change made: the passage is already clear and grammatically complete, and any edit would risk altering the sentence that continues into the context after.\"}",
+    "stopReason": "end_turn",
+    "model": "claude-sonnet-5-5"
+  },
+  "usage": {
+    "inputTokens": 911,
+    "outputTokens": 72,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "recordedAt": "2026-11-16T22:56:42.243Z"
+}
