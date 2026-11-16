@@ -225,3 +225,94 @@ describe("ETag and If-Match", () => {
     },
   );
 });
+
+describe("PATCH /documents/:id with range changes", () => {
+  const first = TEXT.indexOf("thirty");
+  const second = TEXT.lastIndexOf("thirty");
+  const rangeChange = (start: number, end: number, replacement: string, expectedText?: string) => ({
+    operation: "replace",
+    range: expectedText === undefined ? { start, end } : { start, end, expectedText },
+    replacement,
+  });
+
+  it("mixes range and target changes in one request", async () => {
+    const res = await patch("/documents/doc", {
+      changes: [
+        rangeChange(second, second + 16, "sixty (60) days", "thirty (30) days"),
+        { operation: "replace", target: { text: "Payment" }, replacement: "Each payment" },
+        rangeChange(first, first + 6, "fifteen"),
+      ],
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as PatchDocumentResponse;
+    expect(body.text).toBe(
+      "Each payment is due within fifteen (30) days. Late fees accrue after sixty (60) days.",
+    );
+    expect(body.redline.map((h) => [h.changeIndex, h.start])).toEqual([
+      [0, second],
+      [1, 0],
+      [2, first],
+    ]);
+    expect(store.get("doc")?.version).toBe(2);
+  });
+
+  it.each([
+    ["start > end", rangeChange(10, 5, "x")],
+    ["end past the text", rangeChange(0, TEXT.length + 1, "x")],
+  ])("422s RANGE_OUT_OF_BOUNDS for %s and changes nothing", async (_name, change) => {
+    const res = await patch("/documents/doc", { changes: [change] });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details).toMatchObject({
+      reason: "RANGE_OUT_OF_BOUNDS",
+      changeIndex: 0,
+    });
+    expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
+  });
+
+  it("422s EXPECTED_TEXT_MISMATCH with the change index and changes nothing", async () => {
+    const res = await patch("/documents/doc", {
+      changes: [
+        rangeChange(0, 7, "Each payment", "Payment"),
+        rangeChange(first, first + 6, "x", "ninety"),
+      ],
+    });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details).toEqual({
+      reason: "EXPECTED_TEXT_MISMATCH",
+      changeIndex: 1,
+    });
+    expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
+  });
+
+  it("422s OVERLAPPING_CHANGES when a range overlaps a target", async () => {
+    const res = await patch("/documents/doc", {
+      changes: [
+        rangeChange(first, first + 6, "x"),
+        { operation: "replace", target: { text: "(30) days." }, replacement: "y" },
+        { operation: "replace", target: { text: "thirty (30)" }, replacement: "y" },
+      ],
+    });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details.reason).toBe("OVERLAPPING_CHANGES");
+    expect(store.get("doc")?.version).toBe(1);
+  });
+
+  it.each([
+    [
+      "both target and range",
+      {
+        operation: "replace",
+        target: { text: "Payment" },
+        range: { start: 0, end: 7 },
+        replacement: "x",
+      },
+    ],
+    ["neither target nor range", { operation: "replace", replacement: "x" }],
+    ["a fractional offset", rangeChange(0.5, 2, "x")],
+  ])("400s %s", async (_name, change) => {
+    const res = await patch("/documents/doc", { changes: [change] });
+    expect(res.status).toBe(400);
+    expect((await errorOf(res)).details.reason).toBe("INVALID_PAYLOAD");
+    expect(store.get("doc")?.version).toBe(1);
+  });
+});

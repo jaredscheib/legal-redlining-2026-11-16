@@ -145,11 +145,27 @@ export interface LlmService {
 
 // ---------------------------------------------------------------- Edits
 
-export interface ReplaceChange {
+/** Replaces the `occurrence`-th (1-based, default 1) exact match of `target.text`. */
+export interface ReplaceTargetChange {
   operation: "replace";
   target: { text: string; occurrence?: number };
+  range?: never;
   replacement: string;
 }
+
+/**
+ * Replaces [start, end) of the text (UTF-16 code units, half-open). If `expectedText` is
+ * given it must equal the text at that range.
+ */
+export interface ReplaceRangeChange {
+  operation: "replace";
+  range: { start: number; end: number; expectedText?: string };
+  target?: never;
+  replacement: string;
+}
+
+/** Exactly one of `target` or `range`. */
+export type ReplaceChange = ReplaceTargetChange | ReplaceRangeChange;
 
 export interface PatchDocumentRequest {
   changes: ReplaceChange[];
