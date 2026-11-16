@@ -119,17 +119,12 @@ describe("App", () => {
 
   it("explains a search error and offers a retry", async () => {
     mockApi({
-      "GET /search": () =>
-        json(501, {
-          error: "GET /search is not implemented yet",
-          code: 501,
-          details: { reason: "NOT_IMPLEMENTED" },
-        }),
+      "GET /search": () => json(500, { error: "Internal error", code: 500 }),
     });
     render(<App version="dev" />);
     search("fees");
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent(/can't do that yet/);
+    expect(alert).toHaveTextContent(/hit an error while searching \(500\)/);
     expect(within(alert).getByRole("button", { name: "Retry search" })).toBeInTheDocument();
   });
 

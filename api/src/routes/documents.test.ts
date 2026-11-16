@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createApp } from "../app.js";
+import { appWith } from "../../test/http.js";
 import { MAX_CHANGES_PER_REQUEST } from "../config.js";
 import type { PatchDocumentResponse } from "../domain/types.js";
 import type { ErrorBody } from "../errors.js";
@@ -8,12 +8,12 @@ import { InMemoryDocumentStore } from "../store/memory.js";
 const TEXT = "Payment is due within thirty (30) days. Late fees accrue after thirty (30) days.";
 
 let store: InMemoryDocumentStore;
-let app: ReturnType<typeof createApp>;
+let app: ReturnType<typeof appWith>;
 
 beforeEach(() => {
   store = new InMemoryDocumentStore();
   store.create({ id: "doc", title: "Terms", text: TEXT });
-  app = createApp({ store });
+  app = appWith({ store });
 });
 
 const patch = (url: string, body: unknown, headers: Record<string, string> = {}) =>

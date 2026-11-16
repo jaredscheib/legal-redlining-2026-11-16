@@ -101,18 +101,15 @@ export function suggest(id: string, range: { start: number; end: number }, instr
   });
 }
 
-/** Claude is unavailable when the suggestions route answers 501, 502 or 503. */
+/** Claude is unavailable when the suggestions route answers 502 or 503. */
 export const isClaudeUnavailable = (err: unknown) =>
-  err instanceof ApiFailure && [501, 502, 503].includes(err.status);
+  err instanceof ApiFailure && [502, 503].includes(err.status);
 
 /** What happened and what to do, for an error shown to the lawyer. */
 export function describeError(err: unknown, action: string): string {
   if (!(err instanceof ApiFailure)) return `Something went wrong while ${action}. Try again.`;
   if (err.status === 0) {
     return `Couldn't reach the server while ${action}. Check your connection or that the server is running, then try again.`;
-  }
-  if (err.status === 501) {
-    return `This server can't do that yet (${action}). Try again after the server is updated.`;
   }
   if (err.status >= 500) {
     return `The server hit an error while ${action} (${err.status}). Try again in a moment.`;

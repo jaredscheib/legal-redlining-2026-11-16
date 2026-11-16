@@ -3,8 +3,8 @@ import type { DocumentStore, LlmService, SearchService } from "../domain/types.j
 
 export interface AppDeps {
   store: DocumentStore;
-  search?: SearchService;
-  llm?: LlmService;
+  search: SearchService;
+  llm: LlmService;
 }
 
 export type Registrar = (app: Hono, deps: AppDeps) => void;

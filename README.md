@@ -269,7 +269,6 @@ Every non-2xx response has the same shape. `code` repeats the HTTP status and
 | 422    | `OVERLAPPING_CHANGES`     | Two changes overlap or start at the same offset                                                          |
 | 422    | `RANGE_OUT_OF_BOUNDS`     | A `range` change outside the document (`details.changeIndex`)                                            |
 | 422    | `EXPECTED_TEXT_MISMATCH`  | A `range` change whose `expectedText` differs (`details.changeIndex`)                                    |
-| 501    | `NOT_IMPLEMENTED`         | The route's service is not configured in this build                                                      |
 | 502    | `LLM_ERROR`               | The model answered with unusable output                                                                  |
 | 503    | `LLM_UNAVAILABLE`         | No API key, no recording in replay mode, timeout or API error                                            |
 | 500    | none                      | Unexpected; the body is generic and the `x-request-id` header matches the `http.unhandled` log line      |

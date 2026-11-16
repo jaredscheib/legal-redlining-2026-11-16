@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createApp } from "../src/app.js";
+import { appWith } from "./http.js";
 import { InMemoryDocumentStore } from "../src/store/memory.js";
 import { buildLargeContract, TEN_MB } from "./large-contract.js";
 
@@ -21,7 +21,7 @@ describe("large documents (10 MB+)", () => {
   });
 
   it("round-trips intact through POST then GET /documents/:id", async () => {
-    const app = createApp({ store: new InMemoryDocumentStore() });
+    const app = appWith();
     const started = performance.now();
     const created = await app.request("/documents", {
       method: "POST",
@@ -51,7 +51,7 @@ describe("large documents (10 MB+)", () => {
     const marker = "Closing marker: thirty (30) days.";
     const big = text + marker + "\nEnd.\n";
     const doc = store.create({ title: "Large", text: big });
-    const app = createApp({ store });
+    const app = appWith({ store });
 
     const started = performance.now();
     const res = await app.request(`/documents/${doc.id}`, {

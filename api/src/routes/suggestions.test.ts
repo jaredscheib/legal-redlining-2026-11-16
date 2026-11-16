@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { captureLogs } from "../../test/capture-logs.js";
-import { createApp } from "../app.js";
+import { appWith } from "../../test/http.js";
 import type { LlmService, SuggestionInput } from "../domain/types.js";
 import { createLlmClient } from "../llm/client.js";
 import { createLlmService } from "../llm/service.js";
@@ -18,7 +18,7 @@ function setup(suggest: LlmService["suggest"]) {
   const store = new InMemoryDocumentStore();
   store.create({ id: "doc", title: "Doc", text: TEXT });
   const llm: LlmService = { expand: async () => ({ added: [] }), suggest: vi.fn(suggest) };
-  return { app: createApp({ store, llm }), llm, store };
+  return { app: appWith({ store, llm }), llm, store };
 }
 
 const post = (range: { start: number; end: number }, instruction?: string) => ({
@@ -131,7 +131,7 @@ describe("request id through the LLM path", () => {
     });
     const store = new InMemoryDocumentStore();
     store.create({ id: "doc", title: "Doc", text: TEXT });
-    const app = createApp({ store, llm: createLlmService(client) });
+    const app = appWith({ store, llm: createLlmService(client) });
     let res: Response | undefined;
     const { events, raw } = await captureLogs(async () => {
       res = await app.request("/documents/doc/suggestions", post({ start: START, end: END }));

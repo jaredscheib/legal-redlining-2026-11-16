@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createApp } from "./app.js";
+import { appWith } from "../test/http.js";
 import type { ErrorBody } from "./errors.js";
 import { InMemoryDocumentStore } from "./store/memory.js";
 import { seedStore } from "./store/seed.js";
 
 let store: InMemoryDocumentStore;
-let app: ReturnType<typeof createApp>;
+let app: ReturnType<typeof appWith>;
 
 beforeEach(() => {
   store = new InMemoryDocumentStore();
   seedStore(store);
-  app = createApp({ store });
+  app = appWith({ store });
 });
 
 const json = (body: unknown) => ({
@@ -111,7 +111,7 @@ describe("errors", () => {
     broken.list = () => {
       throw new Error("secret internal detail");
     };
-    const res = await createApp({ store: broken }).request("/documents");
+    const res = await appWith({ store: broken }).request("/documents");
     expect(res.status).toBe(500);
     const text = await res.text();
     expect(JSON.parse(text)).toEqual({ error: "Internal error", code: 500 });
@@ -120,26 +120,11 @@ describe("errors", () => {
   });
 });
 
-describe("stubs return 501 NOT_IMPLEMENTED after validating input", () => {
-  it("GET /search", async () => {
-    const res = await app.request("/search?q=terminate&docId=saas-msa&docId=mutual-nda&limit=5");
-    expect(res.status).toBe(501);
-    expectError(await read(res), 501, "NOT_IMPLEMENTED");
-  });
-
+describe("input validation", () => {
   it("GET /search validates its query", async () => {
     const res = await app.request("/search?limit=0");
     expect(res.status).toBe(400);
     expectError(await read(res), 400, "INVALID_PAYLOAD");
-  });
-
-  it("POST /documents/:id/suggestions", async () => {
-    const res = await app.request(
-      "/documents/saas-msa/suggestions",
-      json({ range: { start: 0, end: 20 }, instruction: "Tighten this." }),
-    );
-    expect(res.status).toBe(501);
-    expectError(await read(res), 501, "NOT_IMPLEMENTED");
   });
 
   it("POST /documents/:id/suggestions validates its range", async () => {

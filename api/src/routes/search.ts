@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { notImplemented } from "../errors.js";
 import { validate } from "../validation.js";
 import type { Registrar } from "./deps.js";
 
@@ -17,7 +16,6 @@ export const SearchQuerySchema = z.object({
 export const registerSearchRoutes: Registrar = (app, { search }) => {
   app.get("/search", validate("query", SearchQuerySchema), async (c) => {
     const query = c.req.valid("query");
-    if (!search) throw notImplemented("GET /search");
     const result = await search.search({
       q: query.q,
       docIds: toArray(query.docId),

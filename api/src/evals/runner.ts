@@ -1,6 +1,6 @@
 /**
  * Evals of the intended lawyer flow, driven in-process through createApp.
- * A measurement, not a gate: failures are data. A 501 counts as "not_implemented" at that step.
+ * A measurement, not a gate: failures are data.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -127,7 +127,6 @@ async function call<T>(app: App, url: string, init?: RequestInit): Promise<T> {
   const body = (await res.json().catch(() => ({}))) as {
     details?: { reason?: string };
   };
-  if (res.status === 501) throw new StepFailure("not_implemented");
   if (!res.ok) {
     const reason = body.details?.reason ?? "unknown";
     throw new StepFailure(`http_${res.status}:${reason.toLowerCase()}`);
