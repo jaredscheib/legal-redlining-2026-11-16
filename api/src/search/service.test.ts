@@ -255,6 +255,34 @@ describe("expansion hook", () => {
     expect(first?.score).toBeGreaterThan(second?.score ?? Infinity);
   });
 
+  it("multi-word synonyms: reported whole, scored by their words, highlighted as phrases", async () => {
+    const leaseDocs = {
+      lease: [
+        "Tenant shall defend and hold harmless Landlord from all claims.",
+        "Tenant shall hold the keys at the premises.",
+        "Supplier shall indemnify Customer.",
+      ].join("\n\n"),
+    };
+    const expand = vi.fn<ExpandFn>(async () => ({
+      added: ["Hold  Harmless", "hold harmless", "indemnify", "defend"],
+    }));
+    const { search } = setup(leaseDocs, expand);
+    const res = await search.search(q("indemnify"));
+    // "indemnify" is already a query term; the duplicate phrase collapses after normalizing.
+    expect(res.expansion).toEqual({ status: "applied", added: ["hold harmless", "defend"] });
+    const holdHarmless = res.results.find((r) => r.snippet.includes("hold harmless"));
+    expect(holdHarmless?.matchedTerms).toEqual(["defend", "hold harmless"]);
+    expectExactHighlights({ ...res, results: holdHarmless ? [holdHarmless] : [] }, [
+      "defend",
+      "hold harmless",
+    ]);
+    // "hold" alone scores (its words join the query at half weight) but is not highlighted.
+    const keys = res.results.find((r) => r.snippet.includes("keys"));
+    expect(keys?.matchedTerms).toEqual([]);
+    expect(keys?.highlights).toEqual([]);
+    expect(res.results[0]?.snippet).toBe("Supplier shall indemnify Customer.");
+  });
+
   it("skipped: runs unexpanded with the reason", async () => {
     const { search } = setup(docs, async () => ({ skipped: "timeout" }));
     const res = await search.search(q("terminate"));
