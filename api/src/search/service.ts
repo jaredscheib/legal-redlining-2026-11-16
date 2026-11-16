@@ -5,6 +5,7 @@
 import { EXPANSION_TERM_WEIGHT } from "../config.js";
 import type {
   DocumentStore,
+  LlmService,
   SearchDocumentCount,
   SearchExpansion,
   SearchHit,
@@ -18,7 +19,7 @@ import { SearchIndex, type ScoredPassage, type WeightedTerm } from "./index.js";
 import { parseQuery, phraseRegExp } from "./query.js";
 import { terms as tokenTerms, tokenize } from "./tokenize.js";
 
-export type ExpandFn = (terms: string[]) => Promise<{ added: string[] } | { skipped: string }>;
+export type ExpandFn = LlmService["expand"];
 
 export interface SearchServiceHandle extends SearchService {
   readonly index: SearchIndex;

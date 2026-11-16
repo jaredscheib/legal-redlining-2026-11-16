@@ -118,15 +118,18 @@ export interface SearchService {
   search(query: SearchQuery): Promise<SearchResponse>;
 }
 
-// ---------------------------------------------------------------- LLM (future)
+// ---------------------------------------------------------------- LLM
 
-export interface ExpansionResult {
-  added: string[];
-}
+/** Alternatives to add to the query (lowercase words or phrases), or why there are none. */
+export type ExpansionResult = { added: string[] } | { skipped: string };
 
 export interface SuggestionInput {
+  /** The selected passage, exactly as it is in the document. */
   text: string;
   instruction?: string;
+  /** Up to SUGGESTION_CONTEXT_CHARS of document text before and after the passage. */
+  contextBefore?: string;
+  contextAfter?: string;
 }
 
 export interface SuggestionResult {
