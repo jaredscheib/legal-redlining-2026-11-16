@@ -5,6 +5,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { Worker } from "node:worker_threads";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const out = path.join(root, ".vercel", "output");
@@ -27,6 +28,25 @@ const vc = JSON.parse(
   fs.readFileSync(path.join(out, "functions/api.func/.vc-config.json"), "utf8"),
 );
 check(vc.runtime === "nodejs22.x" && vc.handler === "index.mjs", ".vc-config.json runtime");
+
+// The bundled index worker runs on its own and answers one build request.
+const workerFile = path.join(out, "functions/api.func/index-worker.mjs");
+check(fs.existsSync(workerFile), "exists functions/api.func/index-worker.mjs");
+const reply = await new Promise((resolve) => {
+  const w = new Worker(pathToFileURL(workerFile));
+  const done = (v) => {
+    void w.terminate();
+    resolve(v);
+  };
+  w.once("message", done);
+  w.once("error", (err) => done({ error: err.message }));
+  w.postMessage({ reqId: 1, id: "d", version: 1, text: "Rent is due. Deposit returned." });
+});
+check(
+  reply.reqId === 1 && reply.segment?.starts?.length === 2,
+  "bundled index worker builds a segment",
+  reply.error ?? `passages=${reply.segment?.starts?.length}`,
+);
 
 const mod = await import(pathToFileURL(path.join(out, "functions/api.func/index.mjs")).href);
 const handler = mod.default;
@@ -100,6 +120,26 @@ try {
   );
   const after = doc ? await req("GET", `/documents/${doc.id}`) : { status: 0 };
   check(after.json?.text === text, "dry run left the document unchanged");
+
+  // A real commit is reindexed by the bundled worker; search reports it until the swap lands.
+  const word = "Quokkaclause";
+  const committed = await req("PATCH", `/documents/${doc?.id}`, {
+    changes: [{ operation: "replace", target: { text: target }, replacement: word }],
+  });
+  let found;
+  for (let i = 0; i < 50; i++) {
+    found = await req("GET", `/search?q=${word}&expand=false`);
+    if (found.json?.indexing?.length === 0 && found.json?.total > 0) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  check(
+    committed.status === 200 &&
+      found?.json?.total === 1 &&
+      found.json.results[0]?.docVersion === committed.json?.version &&
+      found.json.results[0]?.stale === false,
+    "commit is reindexed and searchable",
+    `status=${committed.status} total=${found?.json?.total} indexing=${found?.json?.indexing?.length}`,
+  );
 
   const missing = await req("GET", "/no-such-route");
   check(missing.status === 404, "unknown API path is 404", `status=${missing.status}`);
