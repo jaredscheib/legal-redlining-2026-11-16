@@ -12,6 +12,7 @@ const Suggestion = z.object({ replacement: z.string(), rationale: z.string() });
 
 const input = {
   op: "suggest",
+  model: "claude-sonnet-5-5",
   system: "You redline contracts.",
   messages: [{ role: "user" as const, content: "Tighten: Customer may cancel." }],
   schema: Suggestion,
@@ -67,6 +68,26 @@ describe("replay key", () => {
     expect(cassetteKey({ ...base, schema: jsonSchemaOf(z.object({ x: z.string() })) })).not.toBe(k);
     expect(cassetteKey({ ...base, maxTokens: 101 })).not.toBe(k);
     expect(cassetteKey({ ...base, effort: "high" })).not.toBe(k);
+    expect(cassetteKey({ ...base, thinking: "disabled" })).not.toBe(k);
+  });
+
+  it("an unset thinking field hashes like a request without it", () => {
+    expect(cassetteKey({ ...base, thinking: undefined })).toBe(cassetteKey(base));
+  });
+});
+
+describe("per-call model", () => {
+  it("records one cassette per model and bills each at its own price", async () => {
+    const transport = fakeTransport();
+    const client = createLlmClient({ mode: "record", transport, fixturesDir, ledgerPath });
+    const sonnet = await client.call(input);
+    const haiku = await client.call({ ...input, model: "claude-haiku-5-5" });
+    expect(haiku.replayed).toBe(false);
+    expect(transport).toHaveBeenCalledTimes(2);
+    expect(transport.mock.calls[1]?.[0].model).toBe("claude-haiku-5-5");
+    expect(fs.readdirSync(fixturesDir)).toHaveLength(2);
+    expect(sonnet.costUsd).toBeCloseTo(0.004, 10);
+    expect(haiku.costUsd).toBeCloseTo(0.0002, 10); // 1000*$0.10/M + 200*$0.50/M
   });
 });
 
@@ -181,17 +202,32 @@ describe("createLlmClient modes", () => {
 });
 
 describe("ledger", () => {
+  const M = 1_000_000;
+  const only = (k: "inputTokens" | "outputTokens" | "cacheReadTokens") => ({
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    [k]: M,
+  });
+
   it("prices claude-sonnet-5-5 at $2 in / $10 out / $0.10 cache read per 1M tokens", () => {
-    expect(
-      costUsd({ inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }),
-    ).toBe(2);
-    expect(
-      costUsd({ inputTokens: 0, outputTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0 }),
-    ).toBe(10);
-    expect(
-      costUsd({ inputTokens: 0, outputTokens: 0, cacheReadTokens: 1_000_000, cacheWriteTokens: 0 }),
-    ).toBe(0.1);
-    expect(costUsd(usage)).toBeCloseTo(0.004, 10);
+    const sonnet = "claude-sonnet-5-5";
+    expect(costUsd(only("inputTokens"), sonnet)).toBe(2);
+    expect(costUsd(only("outputTokens"), sonnet)).toBe(10);
+    expect(costUsd(only("cacheReadTokens"), sonnet)).toBe(0.1);
+    expect(costUsd(usage, sonnet)).toBeCloseTo(0.004, 10);
+  });
+
+  it("prices claude-haiku-5-5 at $0.10 in / $0.50 out / $0.01 cache read per 1M tokens", () => {
+    const haiku = "claude-haiku-5-5";
+    expect(costUsd(only("inputTokens"), haiku)).toBe(0.1);
+    expect(costUsd(only("outputTokens"), haiku)).toBe(0.5);
+    expect(costUsd(only("cacheReadTokens"), haiku)).toBe(0.01);
+  });
+
+  it("prices an unknown model as the dearest known one", () => {
+    expect(costUsd(only("outputTokens"), "claude-unknown")).toBe(10);
   });
 
   it("appends JSONL entries and summarizes them", () => {

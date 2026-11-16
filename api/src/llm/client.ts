@@ -4,7 +4,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { ZodType } from "zod";
-import { LLM_MODEL, PATHS, llmMode, type LlmMode } from "../config.js";
+import { PATHS, llmMode, type LlmMode } from "../config.js";
 import { log } from "../log.js";
 import { appendLedger, costUsd, defaultLedgerPath } from "./ledger.js";
 import { CassetteStore, cassetteKey } from "./replay.js";
@@ -23,7 +23,6 @@ export interface LlmClientOptions {
   transport?: LlmTransport;
   fixturesDir?: string;
   ledgerPath?: string;
-  model?: string;
 }
 
 export interface LlmStats {
@@ -55,7 +54,8 @@ export function createSdkTransport(): LlmTransport {
     }
     client ??= new Anthropic();
     try {
-      // Sonnet 5.5: adaptive thinking is on by default (omit `thinking`; "disabled" is a 400).
+      // The 5.5 models think adaptively by default (omit `thinking`). Haiku 5.5 accepts
+      // {type: "disabled"} at effort high or below; on Sonnet 5.5 it is a 400.
       // Depth is set with output_config.effort. No temperature/top_p.
       // `create`, not `parse`: parse throws on a refusal or a schema miss before we can read
       // `usage`, and those calls are still billed. The client parses and bills every response.
@@ -66,6 +66,7 @@ export function createSdkTransport(): LlmTransport {
           max_tokens: req.maxTokens,
           system: req.system,
           messages: req.messages,
+          ...(req.thinking === "disabled" ? { thinking: { type: "disabled" as const } } : {}),
           output_config: {
             effort: req.effort,
             format: { type: "json_schema", schema: jsonSchemaOf(schema) },
@@ -115,7 +116,6 @@ function parseOutput<T>(schema: ZodType<T>, text: string): T {
 
 export function createLlmClient(opts: LlmClientOptions = {}): LlmClient {
   const mode = opts.mode ?? llmMode();
-  const model = opts.model ?? LLM_MODEL;
   const cassettes = new CassetteStore(opts.fixturesDir ?? PATHS.fixturesDir);
   const ledgerPath = opts.ledgerPath ?? defaultLedgerPath();
   let transport = opts.transport;
@@ -124,18 +124,19 @@ export function createLlmClient(opts: LlmClientOptions = {}): LlmClient {
   async function call<T>(input: LlmCallInput<T>): Promise<LlmCallResult<T>> {
     const started = performance.now();
     const request: CanonicalRequest = {
-      model,
+      model: input.model,
       system: input.system,
       messages: input.messages,
       schema: jsonSchemaOf(input.schema),
       maxTokens: input.maxTokens,
       effort: input.effort,
+      ...(input.thinking ? { thinking: input.thinking } : {}),
     };
     const key = cassetteKey(request);
     const done = (status: string, replayed: boolean, usage?: TransportResponse["usage"]) =>
       log.info("llm.call", {
         op: input.op,
-        model,
+        model: input.model,
         inputTokens: usage?.inputTokens ?? 0,
         outputTokens: usage?.outputTokens ?? 0,
         ms: Math.round(performance.now() - started),
@@ -163,7 +164,7 @@ export function createLlmClient(opts: LlmClientOptions = {}): LlmClient {
         timeoutMs: input.timeoutMs,
         schema: input.schema,
       });
-      const cost = costUsd(response.usage);
+      const cost = costUsd(response.usage, input.model);
       stats.liveCalls++;
       stats.costUsd += cost;
       // Bill first: the tokens are spent even if the output turns out to be unusable.
@@ -194,7 +195,7 @@ export function createLlmClient(opts: LlmClientOptions = {}): LlmClient {
         cassettes.write({
           key,
           op: input.op,
-          model,
+          model: input.model,
           request,
           response: { text: response.text, stopReason: response.stopReason, model: response.model },
           usage: response.usage,
