@@ -36,7 +36,7 @@ test-fast: ## Used by the pre-commit hook: skips *.large.test.ts
 build:
 	npm run build -w api
 
-smoke: ## Build the API, start it on a free port, curl /healthz and /documents, stop it
+smoke: ## Build the API, start it on a free port, check /healthz, /documents and the main flow, stop it
 	./scripts/smoke.sh
 
 evals: ## Run scenarios/ through the in-process app; table + data/evals/<ts>.json (LLM_MODE, default record)
