@@ -5,7 +5,6 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts", "test/**/*.test.ts"],
     exclude: ["**/node_modules/**", "**/dist/**", "**/.claude/worktrees/**"],
-    env: { LLM_MODE: "replay" },
-    passWithNoTests: true,
+    env: { LLM_MODE: "replay", LOG_FILE: "off", LOG_STDOUT: "off" },
   },
 });

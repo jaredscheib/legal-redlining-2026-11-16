@@ -4,7 +4,7 @@ SHELL := /bin/bash
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 export GIT_SHA
 
-.PHONY: setup check lint format format-check typecheck test test-fast hooks tag
+.PHONY: setup check lint format format-check typecheck test test-fast build smoke hooks tag
 
 setup: ## Install exact dependencies from the lockfile
 	npm ci
@@ -28,6 +28,12 @@ test:
 
 test-fast: ## Used by the pre-commit hook: skips *.large.test.ts
 	LLM_MODE=replay npm run test --workspaces -- --exclude '**/*.large.test.ts' --exclude '**/node_modules/**'
+
+build:
+	npm run build -w api
+
+smoke: ## Build the API, start it on a free port, curl /healthz and /documents, stop it
+	./scripts/smoke.sh
 
 hooks:
 	git config core.hooksPath .githooks
