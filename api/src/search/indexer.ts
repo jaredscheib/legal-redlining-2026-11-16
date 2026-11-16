@@ -80,7 +80,6 @@ export function createWorkerIndexer(
       const { Worker } = await import("node:worker_threads");
       const { url, execArgv } = entry;
       const w = new Worker(url, { execArgv });
-      w.unref();
       w.on("message", (msg: Reply) => {
         const pending = waiting.get(msg.reqId);
         if (!pending) return;
@@ -95,6 +94,8 @@ export function createWorkerIndexer(
       w.on("exit", () => {
         if (worker === w) failAll(new Error("worker_exited"));
       });
+      // After the listeners: attaching a "message" listener refs the worker again.
+      w.unref();
       worker = w;
       return w;
     } catch (err) {
