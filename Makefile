@@ -4,7 +4,7 @@ SHELL := /bin/bash
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 export GIT_SHA
 
-.PHONY: setup check lint format format-check typecheck test test-fast build smoke spend hooks tag
+.PHONY: setup check lint format format-check typecheck test test-fast build smoke evals spend hooks tag
 
 setup: ## Install exact dependencies from the lockfile
 	npm ci
@@ -34,6 +34,9 @@ build:
 
 smoke: ## Build the API, start it on a free port, curl /healthz and /documents, stop it
 	./scripts/smoke.sh
+
+evals: ## Run scenarios/ through the in-process app; table + data/evals/<ts>.json (LLM_MODE, default record)
+	@LOG_STDOUT=off ./scripts/with-keychain ANTHROPIC_API_KEY -- npm run --silent evals -w api
 
 spend: ## $ spent on live LLM calls vs the $30 project budget
 	@npm run --silent spend -w api

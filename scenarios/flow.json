@@ -1,0 +1,20 @@
+[
+  {
+    "id": "f01-liability-cap",
+    "query": "limitation of liability cap fees",
+    "instruction": "Raise the liability cap from six months to twelve months of fees.",
+    "expectInReplacement": ["twelve"]
+  },
+  {
+    "id": "f02-non-solicitation-period",
+    "query": "\"directly or indirectly, solicit\" employee",
+    "instruction": "Shorten the restricted period from twelve months to six months.",
+    "expectInReplacement": ["six"]
+  },
+  {
+    "id": "f03-deposit-return-window",
+    "query": "return of security deposit",
+    "instruction": "Require the landlord to return the deposit within fifteen days instead of thirty.",
+    "expectInReplacement": ["fifteen"]
+  }
+]
