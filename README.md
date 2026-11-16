@@ -5,9 +5,12 @@ Claude-suggested replacement (or write one), preview it as an inline redline, ap
 find the new text by searching again.
 
 **Status: skeleton.** Documents can be listed, read, created and edited
-(`PATCH /documents/{id}`, with `?dryRun=true` for a preview and a word-level redline). Search
-and suggestions are validating stubs that return `501 NOT_IMPLEMENTED`; the evals measure the
-gap.
+(`PATCH /documents/{id}`, with `?dryRun=true` for a preview and a word-level redline).
+`GET /search` adds Claude synonyms for unquoted terms (`expansion` in the response says what
+was added or why it was skipped; `expand=false` turns it off).
+`POST /documents/{id}/suggestions` returns Claude's replacement for a range and a one-line
+rationale without writing; 503 `LLM_UNAVAILABLE` or 502 `LLM_ERROR` when the model can't help.
+Every response carries `x-request-id`, which the logs carry as `reqId`.
 
 ## Setup
 
@@ -34,17 +37,18 @@ gap.
 
 ## LLM calls, replay and spend
 
-All model calls go through `api/src/llm/client.ts` on `claude-sonnet-5-5` with zod-typed
-structured output. `LLM_MODE` picks how:
+All model calls go through `api/src/llm/client.ts` with zod-typed structured output: query
+expansion on `claude-haiku-5-5`, suggestions on `claude-sonnet-5-5`. `LLM_MODE` picks how:
 
 - `record` (default): replay a recording if one exists, otherwise call the API and save it.
 - `replay`: recordings only; a miss fails with `no_recording`. Tests and CI use this.
 - `live`: always call the API; save nothing.
 
 Recordings are `api/fixtures/llm/<sha256>.json`, keyed on the model, prompt, messages, output
-schema, `maxTokens` and effort. Commit them so others replay instead of paying again.
+schema, `maxTokens`, effort and thinking. Commit them so others replay instead of paying again.
 
-Every live call appends tokens and cost ($2 in / $10 out per 1M tokens) to
+Every live call appends tokens and cost at that model's prices (per 1M tokens: Haiku $0.10 in /
+$0.50 out, Sonnet $2 in / $10 out) to
 `data/llm-ledger.jsonl`. The project has a **$30 budget, enforced as a spend limit on the
 Claude platform**; `make spend` is our running record against it. The ledger lives in the
 checkout's `data/` folder, so each worktree keeps its own.

@@ -3,7 +3,15 @@ import type { LlmService, SearchService } from "../domain/types.js";
 import { createSearchService } from "../search/service.js";
 import { InMemoryDocumentStore } from "../store/memory.js";
 import { readSeedFiles, seedStore } from "../store/seed.js";
-import { loadScenarios, p50, probeWord, runEvals } from "./runner.js";
+import {
+  checkSuggestion,
+  definedTerms,
+  leadingClauseNumber,
+  loadScenarios,
+  p50,
+  probeWord,
+  runEvals,
+} from "./runner.js";
 
 const scenarios = loadScenarios();
 const noLlm = () => ({ liveCalls: 0, replayedCalls: 0, failedCalls: 0, costUsd: 0 });
@@ -156,6 +164,63 @@ describe("runEvals with the BM25 search service (no expansion)", () => {
     const quoted = summary.search.cases.filter((c) => c.id.includes("quoted"));
     expect(quoted.map((c) => c.rank)).toEqual([1, 1]);
     expect(summary.flow.failedAt).toEqual({ suggest: 3 });
+  });
+});
+
+describe("suggestion checks", () => {
+  const lease =
+    "4.2 Landlord shall return the unapplied balance of the security deposit to Tenant within " +
+    "thirty (30) days after the later of the Expiration Date or the date Tenant surrenders the Premises.";
+  const sc = {
+    instruction:
+      "Require the landlord to return the deposit within fifteen days instead of thirty.",
+    expectInReplacement: ["fifteen"],
+  };
+
+  it("finds quoted and Title-case defined terms, not sentence openers or all caps", () => {
+    expect(definedTerms(lease)).toEqual(["Landlord", "Tenant", "Expiration Date", "Premises"]);
+    expect(definedTerms('The "Confidential Information" of Each Party.')).toEqual([
+      "Confidential Information",
+      "Party",
+    ]);
+    expect(definedTerms("NEITHER PARTY'S TOTAL LIABILITY")).toEqual([]);
+  });
+
+  it("reads a leading clause number", () => {
+    expect(leadingClauseNumber("  6.2 Customer will pay")).toBe("6.2");
+    expect(leadingClauseNumber("9. Limitation")).toBe("9");
+    expect(leadingClauseNumber("Customer will pay 6.2")).toBeUndefined();
+  });
+
+  it("passes a faithful edit and ignores terms the instruction names", () => {
+    const edited = lease.replace("thirty (30)", "fifteen (15)").replace("Landlord", "Lessor");
+    const checks = checkSuggestion(lease, edited, sc);
+    expect(checks).toEqual([
+      { name: "defined_terms", status: "pass", missing: [] },
+      { name: "clause_number", status: "pass", missing: [] },
+      { name: "expect_in_replacement", status: "pass", missing: [] },
+    ]);
+  });
+
+  it("fails each check with what was lost", () => {
+    const edited = "Landlord shall return the deposit to the lessee within thirty days.";
+    const checks = checkSuggestion(lease, edited, sc);
+    expect(checks).toEqual([
+      {
+        name: "defined_terms",
+        status: "fail",
+        missing: ["Tenant", "Expiration Date", "Premises"],
+      },
+      { name: "clause_number", status: "fail", missing: ["4.2"] },
+      { name: "expect_in_replacement", status: "fail", missing: ["fifteen"] },
+    ]);
+  });
+
+  it("marks checks with nothing to look for as n/a", () => {
+    const checks = checkSuggestion("ALL CAPS TEXT.", "ALL CAPS TEXT, AMENDED.", {
+      instruction: "x",
+    });
+    expect(checks.map((c) => c.status)).toEqual(["n/a", "n/a", "n/a"]);
   });
 });
 
