@@ -17,11 +17,12 @@ check: format-check lint typecheck test ## Everything CI runs
 lint:
 	npx eslint . --max-warnings=0
 
+# Tracked files only, so local untracked files (notes, editor settings) never fail the check.
 format:
-	npx prettier --write .
+	git ls-files -z | xargs -0 npx prettier --write --ignore-unknown
 
 format-check:
-	npx prettier --check .
+	git ls-files -z | xargs -0 npx prettier --check --ignore-unknown
 
 typecheck:
 	npm run typecheck --workspaces
