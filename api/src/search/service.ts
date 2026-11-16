@@ -50,7 +50,31 @@ export function createSearchService(opts: {
     });
   };
 
-  const off = store.onChange((e) => reindex(e.id, e.kind));
+  /**
+   * A commit's reindex runs after the PATCH response (setImmediate), so a large document's
+   * ~1 s reindex never delays the write. Commits queued for the same document coalesce: the
+   * queued run reads the latest version. A search waits for queued reindexes first, so it
+   * never returns passages from a version older than the last completed write.
+   */
+  const pending = new Map<string, Promise<void>>();
+  const scheduleReindex = (id: string) => {
+    if (pending.has(id)) return;
+    const done = new Promise<void>((resolve) =>
+      setImmediate(() => {
+        pending.delete(id);
+        try {
+          reindex(id, "commit");
+        } finally {
+          resolve();
+        }
+      }),
+    );
+    pending.set(id, done);
+  };
+
+  const off = store.onChange((e) =>
+    e.kind === "commit" ? scheduleReindex(e.id) : reindex(e.id, e.kind),
+  );
   for (const { id } of store.list()) reindex(id, "startup");
 
   /**
@@ -89,6 +113,7 @@ export function createSearchService(opts: {
   }
 
   async function search(query: SearchQuery): Promise<SearchResponse> {
+    if (pending.size > 0) await Promise.all(pending.values());
     const t0 = performance.now();
     for (const id of query.docIds ?? []) {
       if (!index.has(id)) throw notFound("DOCUMENT_NOT_FOUND", `Document ${id} not found`);
