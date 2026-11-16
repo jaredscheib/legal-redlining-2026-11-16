@@ -109,10 +109,22 @@ describe("runEvals", () => {
     });
     expect(summary.search.hitAt3).toBe(1);
     expect(summary.search.hitAt3Expansion).toBe(1);
-    expect(summary.flow.failedAt).toEqual({ dry_run: 3 });
-    expect(summary.flow.cases[0]?.reason).toBe("not_implemented");
+    // dry_run, redline, apply and verify_text pass; the oracle only knows scenario queries, so
+    // the re-search for the new wording is the first step that fails.
+    expect(summary.flow.failedAt).toEqual({ search_again: 3 });
+    for (const c of summary.flow.cases) expect(c.reason).toMatch(/^not_found:/);
     expect(Object.keys(summary.latencyP50Ms)).toEqual(
-      expect.arrayContaining(["search", "pick", "suggest", "expectations", "dry_run"]),
+      expect.arrayContaining([
+        "search",
+        "pick",
+        "suggest",
+        "expectations",
+        "dry_run",
+        "redline",
+        "apply",
+        "verify_text",
+        "search_again",
+      ]),
     );
   });
 });

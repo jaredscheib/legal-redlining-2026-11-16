@@ -1,8 +1,12 @@
 import { z } from "zod";
-import { notFound, notImplemented } from "../errors.js";
+import { applyOps } from "../changes/apply.js";
+import { buildRedline } from "../changes/redline.js";
+import { resolveChanges } from "../changes/resolve.js";
+import { MAX_CHANGES_PER_REQUEST } from "../config.js";
+import { notFound } from "../errors.js";
 import { log } from "../log.js";
 import { validate } from "../validation.js";
-import type { DocumentStore } from "../domain/types.js";
+import type { ChangeOp, DocumentStore, PatchDocumentResponse } from "../domain/types.js";
 import type { Registrar } from "./deps.js";
 
 const CreateDocumentBody = z.object({
@@ -22,7 +26,8 @@ const PatchDocumentBody = z.object({
         replacement: z.string(),
       }),
     )
-    .min(1),
+    .min(1)
+    .max(MAX_CHANGES_PER_REQUEST),
 });
 
 const PatchQuery = z.object({
@@ -50,20 +55,37 @@ export const registerDocumentRoutes: Registrar = (app, { store }) => {
     return c.json({ id: doc.id, title: doc.title, text: doc.text, version: doc.version }, 201);
   });
 
-  // Stub: edits land in a later ticket. Response shape: PatchDocumentResponse.
+  // Synchronous from read to commit, so no other request can interleave.
   app.patch(
     "/documents/:id",
     validate("query", PatchQuery),
     validate("json", PatchDocumentBody),
     (c) => {
-      requireDocument(store, c.req.param("id"));
-      throw notImplemented("PATCH /documents/:id");
+      const started = performance.now();
+      const doc = requireDocument(store, c.req.param("id"));
+      const { changes } = c.req.valid("json");
+      const dryRun = c.req.valid("query").dryRun === "true";
+
+      const resolved = resolveChanges(doc.text, changes);
+      const ops: ChangeOp[] = resolved.map(({ start, end, oldText, newText }) => ({
+        start,
+        end,
+        oldText,
+        newText,
+      }));
+      const text = applyOps(doc.text, ops);
+      const redline = buildRedline(doc.text, resolved);
+      const version = dryRun ? doc.version : store.commit(doc.id, text, ops).version;
+
+      log.info("doc.patched", {
+        docId: doc.id,
+        version,
+        changes: changes.length,
+        dryRun,
+        ms: Math.round((performance.now() - started) * 10) / 10,
+      });
+      const body: PatchDocumentResponse = { id: doc.id, version, dryRun, text, redline };
+      return c.json(body);
     },
   );
-
-  // Stub: response shape ChangesResponse.
-  app.get("/documents/:id/changes", (c) => {
-    requireDocument(store, c.req.param("id"));
-    throw notImplemented("GET /documents/:id/changes");
-  });
 };

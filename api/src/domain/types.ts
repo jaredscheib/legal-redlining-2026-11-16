@@ -121,7 +121,7 @@ export interface LlmService {
   suggest(input: SuggestionInput): Promise<SuggestionResult>;
 }
 
-// ---------------------------------------------------------------- Edits (future)
+// ---------------------------------------------------------------- Edits
 
 export interface ReplaceChange {
   operation: "replace";
@@ -139,12 +139,6 @@ export interface PatchDocumentResponse {
   dryRun: boolean;
   text: string;
   redline: RedlineHunk[];
-}
-
-export interface ChangesResponse {
-  id: string;
-  version: number;
-  changes: ChangeLogEntry[];
 }
 
 export interface SuggestionRequest {
