@@ -4,7 +4,7 @@
  */
 import { z } from "zod";
 import { SUGGESTION_MODEL, TIMEOUTS_MS } from "../config.js";
-import type { SuggestionInput, SuggestionResult } from "../domain/types.js";
+import type { LlmService, SuggestionInput } from "../domain/types.js";
 import type { LlmClient } from "./client.js";
 
 export const SUGGESTION_SYSTEM = `You are a contract drafting assistant inside a legal redlining tool.
@@ -63,7 +63,7 @@ export function normalizeReplacement(original: string, replacement: string): str
   return lead + body + trail;
 }
 
-export type SuggestFn = (input: SuggestionInput) => Promise<SuggestionResult>;
+export type SuggestFn = LlmService["suggest"];
 
 /** Errors (LlmUnavailable and others) propagate; the route maps them to HTTP statuses. */
 export function createSuggester(client: LlmClient): SuggestFn {

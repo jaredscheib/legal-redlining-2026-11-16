@@ -6,7 +6,7 @@
 import { randomBytes } from "node:crypto";
 import type { Context, MiddlewareHandler } from "hono";
 import { matchedRoutes } from "hono/route";
-import { log, withLogContext } from "./log.js";
+import { elapsedMs, log, withLogContext } from "./log.js";
 
 export const REQUEST_ID_HEADER = "x-request-id";
 const SAFE_ID = /^[A-Za-z0-9._-]{1,64}$/;
@@ -42,7 +42,7 @@ export const requestId = (): MiddlewareHandler => async (c, next) => {
       method: c.req.method,
       route: matchedRoute(c),
       status: c.res.status,
-      ms: Math.round((performance.now() - t0) * 10) / 10,
+      ms: elapsedMs(t0),
     });
   });
 };

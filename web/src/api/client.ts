@@ -74,9 +74,12 @@ export function search(q: string, expand: boolean, signal?: AbortSignal) {
   return request<SearchResponse>(`/search?${params.toString()}`, { signal });
 }
 
+/** The server's ETag for a document version: `"v<version>"`. */
+export const etag = (version: number) => `"v${version}"`;
+
 /**
- * Previews or applies one change. With `version`, sends `If-Match: "v<version>"` so the server
- * answers 412 VERSION_CONFLICT if the document changed since it was loaded.
+ * Previews or applies one change. With `version`, sends `If-Match: etag(version)` so the
+ * server answers 412 VERSION_CONFLICT if the document changed since it was loaded.
  */
 export function patchDocument(
   id: string,
@@ -87,7 +90,7 @@ export function patchDocument(
   return request<PatchDocumentResponse>(
     `/documents/${encodeURIComponent(id)}?dryRun=${String(dryRun)}`,
     { method: "PATCH", body: JSON.stringify({ changes: [change] }) },
-    version === undefined ? {} : { "If-Match": `"v${version}"` },
+    version === undefined ? {} : { "If-Match": etag(version) },
   );
 }
 
