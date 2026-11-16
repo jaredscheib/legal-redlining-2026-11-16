@@ -170,20 +170,21 @@ export function EditPanel({
                 className={busy === "suggest" ? "spinner" : "spinner spinner-idle"}
                 aria-hidden="true"
               />
-              {busy === "suggest" ? "Asking Claude…" : "Suggest with Claude"}
+              {busy === "suggest" ? "Asking Claude…" : "Suggest"}
             </button>
           </>
         )}
       </div>
       {rationale && <p className="rationale">Claude: {rationale}</p>}
 
-      <div className="preview-box" aria-live="polite">
+      <div className={preview ? "preview-box" : "preview-tip"} aria-live="polite">
         {busy === "preview" ? (
-          <p className="muted">Building the redline…</p>
+          <p className="tip">Building the redline…</p>
         ) : preview ? (
           preview.map((hunk) => <Redline key={hunk.changeIndex} hunk={hunk} />)
         ) : (
-          <p className="muted">
+          <p className="tip">
+            <InfoGlyph />
             {unchanged
               ? "Change the text, then preview the redline."
               : "Preview to see the redline."}
@@ -229,5 +230,16 @@ export function EditPanel({
         </button>
       </div>
     </section>
+  );
+}
+
+/** A small circled "i" for tips; decorative. */
+function InfoGlyph() {
+  return (
+    <svg className="tip-glyph" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="7.25" y="7" width="1.5" height="5" rx="0.75" fill="currentColor" />
+      <circle cx="8" cy="4.75" r="1" fill="currentColor" />
+    </svg>
   );
 }

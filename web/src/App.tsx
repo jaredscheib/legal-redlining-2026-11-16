@@ -8,6 +8,7 @@ import { SearchBar } from "./components/SearchBar";
 import { SynonymToggle } from "./components/SynonymToggle";
 import { hitKey, useSearch, type DisplayHit } from "./hooks/useSearch";
 import { loadSynonyms, saveSynonyms } from "./lib/prefs";
+import { plural } from "./lib/text";
 
 interface Applied {
   version: number;
@@ -94,6 +95,32 @@ export function App({ version }: { version: string }) {
     void run(q, synonyms);
   };
 
+  /** The search box was emptied: drop the search and its results. */
+  const onClearSearch = () => {
+    setActiveKey(null);
+    void run("", synonyms);
+  };
+
+  /** Back to the home state; any search results stay. */
+  const closeDocument = () => {
+    docRequest.current?.abort();
+    docRequest.current = null;
+    setDoc(null);
+    setDocLoading(false);
+    setDocError(null);
+    setHighlight(null);
+    setSelection(null);
+    setApplied(null);
+    setStaleHit(false);
+    setActiveKey(null);
+  };
+
+  const openDocument = (id: string) => {
+    setActiveKey(null);
+    setApplied(null);
+    void loadDoc(id);
+  };
+
   const onToggleSynonyms = (on: boolean) => {
     setSynonyms(on);
     saveSynonyms(on);
@@ -116,6 +143,11 @@ export function App({ version }: { version: string }) {
     if (!doc || !selection) return;
     setDoc({ ...doc, text: res.text, version: res.version });
     setVersions((v) => ({ ...v, [res.id]: res.version }));
+    setDocuments((ds) =>
+      ds.map((d) =>
+        d.id === res.id ? { ...d, version: res.version, length: res.text.length } : d,
+      ),
+    );
     setHighlight({ start: selection.start, end: selection.start + replacement.length });
     setSelection(null);
     setApplied({ version: res.version, changes: 1 });
@@ -129,7 +161,13 @@ export function App({ version }: { version: string }) {
     <div className="app">
       <header className="app-header">
         <h1>Redline</h1>
-        <SearchBar value={query} onChange={setQuery} onSearch={onSearch} busy={busySearching} />
+        <SearchBar
+          value={query}
+          onChange={setQuery}
+          onSearch={onSearch}
+          onClear={onClearSearch}
+          busy={busySearching}
+        />
         <SynonymToggle on={synonyms} onChange={onToggleSynonyms} />
       </header>
       <main className="workspace">
@@ -138,7 +176,9 @@ export function App({ version }: { version: string }) {
             state={searchState}
             activeKey={activeKey}
             currentVersions={versions}
+            library={documents}
             onOpen={openHit}
+            onOpenDocument={openDocument}
             onExample={onExample}
             onRetry={() => onSearch(searchState.query)}
           />
@@ -150,7 +190,7 @@ export function App({ version }: { version: string }) {
               id="doc-picker"
               value={doc?.id ?? ""}
               onChange={(e) => {
-                if (e.target.value) void loadDoc(e.target.value);
+                if (e.target.value) openDocument(e.target.value);
               }}
             >
               <option value="" disabled>
@@ -162,6 +202,12 @@ export function App({ version }: { version: string }) {
                 </option>
               ))}
             </select>
+            {(doc || docLoading || docError) && (
+              <button type="button" className="btn btn-ghost doc-close" onClick={closeDocument}>
+                <span aria-hidden="true">×</span>
+                Close document
+              </button>
+            )}
           </div>
           <div className="doc-scroll">
             {docError ? (
@@ -201,8 +247,7 @@ export function App({ version }: { version: string }) {
               </p>
             ) : applied ? (
               <p className="notice notice-success" role="status">
-                Applied — now version {applied.version}, {applied.changes}{" "}
-                {applied.changes === 1 ? "change" : "changes"}
+                Applied {plural(applied.changes, "change")}. Now version {applied.version}.
               </p>
             ) : (
               <p className="muted dock-hint">

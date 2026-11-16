@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeOccurrence, rangeToOffsets } from "./text";
+import { computeOccurrence, plural, rangeToOffsets } from "./text";
 
 describe("computeOccurrence", () => {
   const text = "the fee. the fee. the fee.";
@@ -63,5 +63,14 @@ describe("rangeToOffsets", () => {
     expect(rangeToOffsets(pre, outside)).toBeNull();
     pre.remove();
     other.remove();
+  });
+});
+
+describe("plural", () => {
+  it("uses the singular only for exactly one", () => {
+    expect(plural(0, "change")).toBe("0 changes");
+    expect(plural(1, "change")).toBe("1 change");
+    expect(plural(2, "change")).toBe("2 changes");
+    expect(plural(12345, "character")).toBe("12,345 characters");
   });
 });
