@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../app.js";
+import { MAX_CHANGES_PER_REQUEST } from "../config.js";
 import type { PatchDocumentResponse } from "../domain/types.js";
 import type { ErrorBody } from "../errors.js";
 import { InMemoryDocumentStore } from "../store/memory.js";
@@ -101,7 +102,10 @@ describe("PATCH /documents/:id", () => {
       },
     ],
     ["no changes", { changes: [] }],
-    ["more than one change", { changes: [swap().changes[0], swap().changes[0]] }],
+    [
+      `more than ${MAX_CHANGES_PER_REQUEST} changes`,
+      { changes: Array.from({ length: MAX_CHANGES_PER_REQUEST + 1 }, () => swap().changes[0]) },
+    ],
   ])("400s %s with zod issues", async (_name, body) => {
     const res = await patch("/documents/doc", body);
     expect(res.status).toBe(400);
@@ -133,5 +137,56 @@ describe("PATCH /documents/:id", () => {
     const err = await errorOf(res);
     expect(err.details).toEqual({ reason: "OCCURRENCE_OUT_OF_RANGE", changeIndex: 0, found: 2 });
     expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
+  });
+});
+
+describe("PATCH /documents/:id with several changes", () => {
+  const replace = (text: string, replacement: string, occurrence?: number) => ({
+    operation: "replace",
+    target: { text, ...(occurrence ? { occurrence } : {}) },
+    replacement,
+  });
+
+  it("applies three changes in one version, one hunk per change with its changeIndex", async () => {
+    const res = await patch("/documents/doc", {
+      changes: [
+        replace("thirty (30) days", "sixty (60) days", 2),
+        replace("Payment", "Each payment"),
+        replace("thirty (30) days", "fifteen (15) days", 1),
+      ],
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as PatchDocumentResponse;
+    expect(body.version).toBe(2);
+    expect(body.text).toBe(
+      "Each payment is due within fifteen (15) days. Late fees accrue after sixty (60) days.",
+    );
+    expect(body.redline.map((h) => [h.changeIndex, h.start])).toEqual([
+      [0, TEXT.lastIndexOf("thirty")],
+      [1, 0],
+      [2, TEXT.indexOf("thirty")],
+    ]);
+    expect(store.get("doc")).toMatchObject({ text: body.text, version: 2 });
+    expect(store.history("doc")).toHaveLength(1);
+  });
+
+  it("422s OVERLAPPING_CHANGES and changes nothing", async () => {
+    const res = await patch("/documents/doc", {
+      changes: [replace("thirty (30) days", "x"), replace("(30) days. Late", "y")],
+    });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details.reason).toBe("OVERLAPPING_CHANGES");
+    expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
+    expect(store.history("doc")).toEqual([]);
+  });
+
+  it("422s with the failing change's index and applies none of the others", async () => {
+    const res = await patch("/documents/doc", {
+      changes: [replace("Payment", "Each payment"), replace("ninety", "x"), replace("Late", "L")],
+    });
+    expect(res.status).toBe(422);
+    expect((await errorOf(res)).details).toEqual({ reason: "TARGET_NOT_FOUND", changeIndex: 1 });
+    expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
+    expect(store.history("doc")).toEqual([]);
   });
 });

@@ -58,7 +58,7 @@ export const PASSAGE_MAX_CHARS = 400;
 export const REDLINE_CONTEXT_CHARS = 80;
 
 /** Max changes in one PATCH. The engine handles any number of non-overlapping changes. */
-export const MAX_CHANGES_PER_REQUEST = 1;
+export const MAX_CHANGES_PER_REQUEST = 50;
 
 /** BM25 parameters for passage search. */
 export const BM25 = { k1: 1.2, b: 0.75 } as const;
