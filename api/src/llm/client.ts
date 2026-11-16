@@ -4,10 +4,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { ZodType } from "zod";
-import { PATHS, llmMode, type LlmMode } from "../config.js";
+import { PATHS, llmMaxLiveCalls, llmMode, type LlmMode } from "../config.js";
 import { log } from "../log.js";
-import { appendLedger, costUsd, defaultLedgerPath } from "./ledger.js";
-import { CassetteStore, cassetteKey } from "./replay.js";
+import { appendLedger, costUsd, defaultLedgerPath, type LedgerEntry } from "./ledger.js";
+import { CassetteStore, cassetteKey, type Cassette } from "./replay.js";
 import {
   LlmUnavailable,
   type CanonicalRequest,
@@ -23,6 +23,12 @@ export interface LlmClientOptions {
   transport?: LlmTransport;
   fixturesDir?: string;
   ledgerPath?: string;
+  /** Live calls allowed in this client's lifetime; defaults to LLM_MAX_LIVE_CALLS. */
+  maxLiveCalls?: number;
+  /** Defaults to the file-backed cassette store; tests pass a fake. */
+  cassettes?: Pick<CassetteStore, "read" | "write">;
+  /** Defaults to appending to the JSONL ledger; tests pass a fake. */
+  appendLedger?: typeof appendLedger;
 }
 
 export interface LlmStats {
@@ -116,10 +122,38 @@ function parseOutput<T>(schema: ZodType<T>, text: string): T {
 
 export function createLlmClient(opts: LlmClientOptions = {}): LlmClient {
   const mode = opts.mode ?? llmMode();
-  const cassettes = new CassetteStore(opts.fixturesDir ?? PATHS.fixturesDir);
+  const cassettes = opts.cassettes ?? new CassetteStore(opts.fixturesDir ?? PATHS.fixturesDir);
   const ledgerPath = opts.ledgerPath ?? defaultLedgerPath();
+  const maxLiveCalls = opts.maxLiveCalls ?? llmMaxLiveCalls();
+  const writeLedger = opts.appendLedger ?? appendLedger;
   let transport = opts.transport;
   const stats: LlmStats = { liveCalls: 0, replayedCalls: 0, failedCalls: 0, costUsd: 0 };
+  /** Every request sent to the API, billed or not; the cap counts these. */
+  let liveAttempts = 0;
+  let ledgerWarned = false;
+
+  /** Best effort: on a read-only filesystem the llm.call line on stdout is the spend record. */
+  function recordSpend(entry: LedgerEntry): void {
+    try {
+      writeLedger(entry, ledgerPath);
+    } catch (err) {
+      if (ledgerWarned) return;
+      ledgerWarned = true;
+      log.warn("llm.ledger_unwritable", { code: (err as NodeJS.ErrnoException).code ?? "error" });
+    }
+  }
+
+  /** Best effort: a missing recording only costs a repeat call later. */
+  function saveCassette(cassette: Cassette): void {
+    try {
+      cassettes.write(cassette);
+    } catch (err) {
+      log.warn("llm.cassette_unwritable", {
+        key: cassette.key.slice(0, 12),
+        code: (err as NodeJS.ErrnoException).code ?? "error",
+      });
+    }
+  }
 
   async function call<T>(input: LlmCallInput<T>): Promise<LlmCallResult<T>> {
     const started = performance.now();
@@ -159,7 +193,11 @@ export function createLlmClient(opts: LlmClientOptions = {}): LlmClient {
         }
       }
 
+      if (liveAttempts >= maxLiveCalls) {
+        throw new LlmUnavailable("cap_reached", `live call cap of ${maxLiveCalls} reached`);
+      }
       transport ??= createSdkTransport();
+      liveAttempts++;
       const response = await transport(request, {
         timeoutMs: input.timeoutMs,
         schema: input.schema,
@@ -168,19 +206,16 @@ export function createLlmClient(opts: LlmClientOptions = {}): LlmClient {
       stats.liveCalls++;
       stats.costUsd += cost;
       // Bill first: the tokens are spent even if the output turns out to be unusable.
-      appendLedger(
-        {
-          ts: new Date().toISOString(),
-          op: input.op,
-          model: response.model,
-          inputTokens: response.usage.inputTokens,
-          outputTokens: response.usage.outputTokens,
-          cacheReadTokens: response.usage.cacheReadTokens,
-          cacheWriteTokens: response.usage.cacheWriteTokens,
-          costUsd: cost,
-        },
-        ledgerPath,
-      );
+      recordSpend({
+        ts: new Date().toISOString(),
+        op: input.op,
+        model: response.model,
+        inputTokens: response.usage.inputTokens,
+        outputTokens: response.usage.outputTokens,
+        cacheReadTokens: response.usage.cacheReadTokens,
+        cacheWriteTokens: response.usage.cacheWriteTokens,
+        costUsd: cost,
+      });
       if (response.stopReason === "refusal") {
         throw new LlmUnavailable(
           "refusal",
@@ -192,7 +227,7 @@ export function createLlmClient(opts: LlmClientOptions = {}): LlmClient {
           ? (response.parsed as T)
           : parseOutput(input.schema, response.text);
       if (mode === "record") {
-        cassettes.write({
+        saveCassette({
           key,
           op: input.op,
           model: input.model,

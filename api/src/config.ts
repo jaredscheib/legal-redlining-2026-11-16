@@ -37,6 +37,18 @@ export function llmMode(): LlmMode {
   return parseLlmMode(process.env.LLM_MODE);
 }
 
+/**
+ * Live (billed) calls one process may make before the client refuses with `cap_reached`.
+ * Unset means unlimited. Read lazily, like llmMode().
+ */
+export function llmMaxLiveCalls(): number {
+  const raw = process.env.LLM_MAX_LIVE_CALLS;
+  if (raw === undefined || raw === "") return Infinity;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) throw new Error("LLM_MAX_LIVE_CALLS must be an integer >= 0");
+  return n;
+}
+
 export const TIMEOUTS_MS = {
   expansion: 2500,
   suggestion: 20000,
@@ -90,8 +102,9 @@ export const EXPANSION_TERM_WEIGHT = 0.5;
 export const PATHS = {
   apiRoot: API_ROOT,
   repoRoot: REPO_ROOT,
-  seedDir: path.join(API_ROOT, "seed"),
-  fixturesDir: path.join(API_ROOT, "fixtures", "llm"),
+  /** SEED_DIR and FIXTURES_DIR let a bundled build (e.g. the Vercel function) carry its own. */
+  seedDir: process.env.SEED_DIR || path.join(API_ROOT, "seed"),
+  fixturesDir: process.env.FIXTURES_DIR || path.join(API_ROOT, "fixtures", "llm"),
   dataDir: process.env.DATA_DIR ?? path.join(REPO_ROOT, "data"),
 } as const;
 
