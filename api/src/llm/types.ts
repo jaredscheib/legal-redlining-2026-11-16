@@ -55,8 +55,6 @@ export interface CanonicalRequest {
 export interface TransportResponse {
   /** Raw JSON text of the structured output. */
   text: string;
-  /** Output already parsed with the request's zod schema, when the transport did it. */
-  parsed?: unknown;
   stopReason: string | null;
   /** Set when stopReason is "refusal". */
   refusalCategory?: string;

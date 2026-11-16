@@ -66,12 +66,11 @@ export function normalizeReplacement(original: string, replacement: string): str
 export type SuggestFn = (input: SuggestionInput) => Promise<SuggestionResult>;
 
 /** Errors (LlmUnavailable and others) propagate; the route maps them to HTTP statuses. */
-export function createSuggester(client: LlmClient, opts: { model?: string } = {}): SuggestFn {
-  const model = opts.model ?? SUGGESTION_MODEL;
+export function createSuggester(client: LlmClient): SuggestFn {
   return async (input) => {
     const { output } = await client.call({
       op: "suggest",
-      model,
+      model: SUGGESTION_MODEL,
       system: SUGGESTION_SYSTEM,
       messages: [{ role: "user", content: suggestionMessage(input) }],
       schema: SuggestionSchema,
@@ -82,7 +81,7 @@ export function createSuggester(client: LlmClient, opts: { model?: string } = {}
     return {
       replacement: normalizeReplacement(input.text, output.replacement),
       rationale: output.rationale.replace(/\s+/g, " ").trim(),
-      model,
+      model: SUGGESTION_MODEL,
     };
   };
 }

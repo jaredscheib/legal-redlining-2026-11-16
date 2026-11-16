@@ -1,7 +1,6 @@
 /**
  * Wire types for the API, mirrored from api/src/domain/types.ts. They are mirrored rather than
- * imported because the web tsconfig only includes `src/`, and the search hit on the wire carries
- * `matchedTerms`, which the domain type does not declare yet.
+ * imported because the web tsconfig only includes `src/`. Keep the two in step.
  */
 
 export interface DocumentSummary {

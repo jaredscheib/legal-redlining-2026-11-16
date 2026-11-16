@@ -36,10 +36,6 @@ export function withLogContext<T>(ctx: LogContext, fn: () => T): T {
   return context.run(ctx, fn);
 }
 
-export function currentLogContext(): LogContext | undefined {
-  return context.getStore();
-}
-
 function write(level: "info" | "warn" | "error", event: string, fields: LogFields): void {
   const ctx = context.getStore();
   const line = JSON.stringify({ ts: new Date().toISOString(), level, event, ...ctx, ...fields });

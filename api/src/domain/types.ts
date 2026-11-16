@@ -64,7 +64,7 @@ export interface DocumentStore {
   onChange(listener: ChangeListener): () => void;
 }
 
-// ---------------------------------------------------------------- Search (future)
+// ---------------------------------------------------------------- Search
 
 export interface SearchQuery {
   q: string;
@@ -167,21 +167,12 @@ export interface ReplaceRangeChange {
 /** Exactly one of `target` or `range`. */
 export type ReplaceChange = ReplaceTargetChange | ReplaceRangeChange;
 
-export interface PatchDocumentRequest {
-  changes: ReplaceChange[];
-}
-
 export interface PatchDocumentResponse {
   id: string;
   version: number;
   dryRun: boolean;
   text: string;
   redline: RedlineHunk[];
-}
-
-export interface SuggestionRequest {
-  range: { start: number; end: number };
-  instruction?: string;
 }
 
 export type SuggestionResponse = SuggestionResult;
