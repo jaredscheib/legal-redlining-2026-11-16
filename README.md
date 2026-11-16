@@ -487,6 +487,15 @@ was replayed. `make dev` also writes `data/api.log` and `data/web.log`.
   a gate. It defaults to `LLM_MODE=record`, which can make billed calls; use
   `LLM_MODE=replay make evals` to stay on recordings.
 - **CI** (`.github/workflows/ci.yml`) runs `make check` in replay mode and is started by hand.
+- **`make coverage`** runs both workspaces' full suites (replay mode, large tests included)
+  with v8 coverage over `src/` (tests excluded), prints a summary per workspace, and writes
+  HTML and `coverage-summary.json` to `api/coverage/` and `web/coverage/` (git-ignored). It is
+  a measurement; no threshold gates `make check`. Measured at `c92de29`:
+
+  | Workspace | Lines  | Branches | Functions |
+  | --------- | ------ | -------- | --------- |
+  | `api`     | 91.41% | 76.54%   | 93.18%    |
+  | `web`     | 95.27% | 84.45%   | 95.09%    |
 
 ## Deploy (Vercel)
 
