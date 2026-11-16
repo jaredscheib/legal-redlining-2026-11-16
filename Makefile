@@ -7,7 +7,7 @@ export GIT_SHA
 LLM_LEDGER_PATH ?= $(dir $(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null))data/llm-ledger.jsonl
 export LLM_LEDGER_PATH
 
-.PHONY: setup check lint format format-check typecheck test test-fast build smoke vercel-build vercel-verify evals compare-expansion spend bench dev dev-stop hooks tag
+.PHONY: setup check lint format format-check typecheck test test-fast coverage build smoke vercel-build vercel-verify evals compare-expansion spend bench dev dev-stop hooks tag
 
 setup: ## Install exact dependencies from the lockfile
 	npm ci
@@ -32,6 +32,14 @@ test:
 
 test-fast: ## Used by the pre-commit hook: skips *.large.test.ts
 	LLM_MODE=replay npm run test --workspaces -- --exclude '**/*.large.test.ts' --exclude '**/node_modules/**'
+
+coverage: ## Full test suite (large tests too) with v8 coverage; summary per workspace, HTML in {api,web}/coverage/
+	LLM_MODE=replay npm run test --workspaces -- --coverage.enabled \
+		--coverage.provider=v8 --coverage.reportsDirectory=coverage \
+		--coverage.reporter=text-summary --coverage.reporter=html --coverage.reporter=json-summary \
+		--coverage.include='src/**' \
+		--coverage.exclude='**/*.test.{ts,tsx}' --coverage.exclude='**/test-setup.ts' \
+		--coverage.exclude='**/*.config.*' --coverage.exclude='scripts/**' --coverage.exclude='**/dist/**'
 
 build:
 	npm run build -w api
