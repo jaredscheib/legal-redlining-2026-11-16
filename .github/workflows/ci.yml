@@ -1,6 +1,6 @@
 name: ci
 # Run once per merge, by hand, after `make check` passes locally: gh workflow run ci.yml --ref <branch>
-# The project's first ticket adds its toolchain setup. Actions minutes are paid: keep every cap below.
+# Actions minutes are paid: keep every cap below.
 on:
   workflow_dispatch:
 concurrency:

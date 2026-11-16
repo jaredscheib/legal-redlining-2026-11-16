@@ -4,7 +4,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { PRICES_PER_MTOK, dataPath } from "../config.js";
+import { LLM_LEDGER_PATH, PRICES_PER_MTOK, dataPath } from "../config.js";
 import type { LlmUsage } from "./types.js";
 
 export interface LedgerEntry {
@@ -14,10 +14,15 @@ export interface LedgerEntry {
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
+  cacheWriteTokens: number;
   costUsd: number;
 }
 
-export const defaultLedgerPath = () => dataPath("llm-ledger.jsonl");
+/**
+ * LLM_LEDGER_PATH (set by the Makefile to the main checkout's data/) keeps one ledger for the
+ * whole project, so spend recorded in a builder's worktree is not lost with the worktree.
+ */
+export const defaultLedgerPath = () => LLM_LEDGER_PATH ?? dataPath("llm-ledger.jsonl");
 
 /** Cache writes (5-minute TTL) bill at 1.25x the input price. */
 const CACHE_WRITE_MULTIPLIER = 1.25;

@@ -57,28 +57,29 @@ export function createSdkTransport(): LlmTransport {
     try {
       // Sonnet 5.5: adaptive thinking is on by default (omit `thinking`; "disabled" is a 400).
       // Depth is set with output_config.effort. No temperature/top_p.
-      const response = await client.messages.parse(
+      // `create`, not `parse`: parse throws on a refusal or a schema miss before we can read
+      // `usage`, and those calls are still billed. The client parses and bills every response.
+      // No SDK retries, so one call is one billed request and one ledger line.
+      const response = await client.messages.create(
         {
           model: req.model,
           max_tokens: req.maxTokens,
           system: req.system,
           messages: req.messages,
-          output_config: { effort: req.effort, format: zodOutputFormat(schema) },
+          output_config: {
+            effort: req.effort,
+            format: { type: "json_schema", schema: jsonSchemaOf(schema) },
+          },
         },
-        { timeout: timeoutMs, maxRetries: 1 },
+        { timeout: timeoutMs, maxRetries: 0 },
       );
-      if (response.stop_reason === "refusal") {
-        throw new LlmUnavailable(
-          "refusal",
-          `model declined (${response.stop_details?.category ?? "unspecified"})`,
-        );
-      }
       const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
       const u = response.usage;
       return {
         text,
-        parsed: response.parsed_output ?? undefined,
-        stopReason: response.stop_reason,
+        parsed: undefined,
+        stopReason: response.stop_reason ?? "unknown",
+        refusalCategory: response.stop_details?.category ?? undefined,
         model: response.model,
         usage: {
           inputTokens: u.input_tokens,
@@ -174,11 +175,17 @@ export function createLlmClient(opts: LlmClientOptions = {}): LlmClient {
           inputTokens: response.usage.inputTokens,
           outputTokens: response.usage.outputTokens,
           cacheReadTokens: response.usage.cacheReadTokens,
+          cacheWriteTokens: response.usage.cacheWriteTokens,
           costUsd: cost,
         },
         ledgerPath,
       );
-      // The SDK parses with the same zod schema; fall back to parsing the text ourselves.
+      if (response.stopReason === "refusal") {
+        throw new LlmUnavailable(
+          "refusal",
+          `model declined (${response.refusalCategory ?? "unspecified"})`,
+        );
+      }
       const output =
         response.parsed !== undefined
           ? (response.parsed as T)

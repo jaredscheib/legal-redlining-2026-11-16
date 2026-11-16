@@ -48,6 +48,9 @@ export const PRICES_PER_MTOK = {
 /** Hard cap is enforced on the Claude platform; we track spend against it locally. */
 export const PROJECT_BUDGET_USD = 30;
 
+/** One spend ledger per project; the Makefile points it at the main checkout's data/. */
+export const LLM_LEDGER_PATH: string | undefined = process.env.LLM_LEDGER_PATH || undefined;
+
 /** Max chars of a passage sent for a suggestion. */
 export const PASSAGE_MAX_CHARS = 400;
 

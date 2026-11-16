@@ -164,6 +164,20 @@ describe("createLlmClient modes", () => {
     expect(readLedger(ledgerPath)).toHaveLength(1);
     expect(fs.existsSync(fixturesDir)).toBe(false);
   });
+
+  it("bills a refusal before reporting it, and records no cassette", async () => {
+    const transport = vi.fn<LlmTransport>(async (req) => ({
+      text: "",
+      stopReason: "refusal",
+      refusalCategory: "cyber",
+      model: req.model,
+      usage,
+    }));
+    const client = createLlmClient({ mode: "record", transport, fixturesDir, ledgerPath });
+    await expect(client.call(input)).rejects.toMatchObject({ reason: "refusal" });
+    expect(readLedger(ledgerPath)).toHaveLength(1);
+    expect(fs.existsSync(fixturesDir)).toBe(false);
+  });
 });
 
 describe("ledger", () => {
@@ -188,6 +202,7 @@ describe("ledger", () => {
       inputTokens: 1000,
       outputTokens: 200,
       cacheReadTokens: 0,
+      cacheWriteTokens: 0,
       costUsd: 0.004,
     };
     appendLedger(entry, ledgerPath);

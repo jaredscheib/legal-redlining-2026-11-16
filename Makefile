@@ -3,6 +3,9 @@ SHELL := /bin/bash
 
 GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 export GIT_SHA
+# Every worktree writes to the main checkout's ledger, so recorded spend outlives a worktree.
+LLM_LEDGER_PATH ?= $(dir $(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null))data/llm-ledger.jsonl
+export LLM_LEDGER_PATH
 
 .PHONY: setup check lint format format-check typecheck test test-fast build smoke evals spend dev dev-stop hooks tag
 

@@ -50,6 +50,8 @@ export interface TransportResponse {
   /** Output already parsed with the request's zod schema, when the transport did it. */
   parsed?: unknown;
   stopReason: string | null;
+  /** Set when stopReason is "refusal". */
+  refusalCategory?: string;
   model: string;
   usage: LlmUsage;
 }
