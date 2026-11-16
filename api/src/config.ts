@@ -54,6 +54,12 @@ export const LLM_LEDGER_PATH: string | undefined = process.env.LLM_LEDGER_PATH |
 /** Max chars of a passage sent for a suggestion. */
 export const PASSAGE_MAX_CHARS = 400;
 
+/** Max chars of surrounding text on each side of a redline hunk. */
+export const REDLINE_CONTEXT_CHARS = 80;
+
+/** Max changes in one PATCH. The engine handles any number of non-overlapping changes. */
+export const MAX_CHANGES_PER_REQUEST = 1;
+
 export const PATHS = {
   apiRoot: API_ROOT,
   repoRoot: REPO_ROOT,

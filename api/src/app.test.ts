@@ -121,39 +121,6 @@ describe("errors", () => {
 });
 
 describe("stubs return 501 NOT_IMPLEMENTED after validating input", () => {
-  const patchBody = {
-    changes: [{ operation: "replace", target: { text: "cancel" }, replacement: "terminate" }],
-  };
-
-  it("PATCH /documents/:id", async () => {
-    const res = await app.request("/documents/saas-msa?dryRun=true", {
-      ...json(patchBody),
-      method: "PATCH",
-    });
-    expect(res.status).toBe(501);
-    expectError(await read(res), 501, "NOT_IMPLEMENTED");
-  });
-
-  it("PATCH /documents/:id validates its body", async () => {
-    const res = await app.request("/documents/saas-msa", {
-      ...json({ changes: [{ operation: "delete" }] }),
-      method: "PATCH",
-    });
-    expect(res.status).toBe(400);
-    expectError(await read(res), 400, "INVALID_PAYLOAD");
-  });
-
-  it("PATCH /documents/:id 404s an unknown document", async () => {
-    const res = await app.request("/documents/nope", { ...json(patchBody), method: "PATCH" });
-    expect(res.status).toBe(404);
-  });
-
-  it("GET /documents/:id/changes", async () => {
-    const res = await app.request("/documents/saas-msa/changes");
-    expect(res.status).toBe(501);
-    expectError(await read(res), 501, "NOT_IMPLEMENTED");
-  });
-
   it("GET /search", async () => {
     const res = await app.request("/search?q=terminate&docId=saas-msa&docId=mutual-nda&limit=5");
     expect(res.status).toBe(501);
