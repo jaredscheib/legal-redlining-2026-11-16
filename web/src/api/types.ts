@@ -68,9 +68,17 @@ export interface RedlineHunk {
   segments: Segment[];
 }
 
+/** The UI targets by text and occurrence. */
 export interface ReplaceChange {
   operation: "replace";
   target: { text: string; occurrence?: number };
+  replacement: string;
+}
+
+/** The API also accepts a [start, end) range (UTF-16 offsets) in place of `target`. */
+export interface ReplaceRangeChange {
+  operation: "replace";
+  range: { start: number; end: number; expectedText?: string };
   replacement: string;
 }
 
