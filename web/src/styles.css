@@ -514,6 +514,18 @@ button:focus-visible {
   font-size: 0.875rem;
 }
 
+/* Shares the status line's fixed height and truncates, so it never shifts the results. */
+.indexing-notice {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: right;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
 .result-count {
   font-size: 0.95rem;
   color: var(--text);

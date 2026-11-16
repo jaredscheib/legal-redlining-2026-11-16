@@ -166,7 +166,11 @@ export function ResultList({
               >
                 <span className="result-title">
                   {hit.title}
-                  {stale && <span className="tag">older version</span>}
+                  {hit.stale ? (
+                    <span className="tag">updating</span>
+                  ) : (
+                    stale && <span className="tag">older version</span>
+                  )}
                 </span>
                 <Snippet hit={hit} />
                 {hit.alsoMatched && hit.alsoMatched.length > 0 && (
@@ -178,6 +182,22 @@ export function ResultList({
         })}
       </ul>
     </>
+  );
+}
+
+/**
+ * A quiet note, inside the status line so it never moves the results, while the server is
+ * still reindexing a document the results come from.
+ */
+function IndexingNotice({ state }: { state: SearchState }) {
+  if (state.phase === "loading" || state.indexing.length === 0) return null;
+  const text = state.indexing
+    .map((d) => `Updating ${d.title} (v${d.indexedVersion} → v${d.currentVersion})`)
+    .join("; ");
+  return (
+    <span className="indexing-notice" title={`${text} — results may be out of date`}>
+      {text} — results may be out of date
+    </span>
   );
 }
 
@@ -195,6 +215,7 @@ function StatusLine({ state }: { state: SearchState }) {
           )}
         </h2>
       )}
+      <IndexingNotice state={state} />
     </div>
   );
 }
