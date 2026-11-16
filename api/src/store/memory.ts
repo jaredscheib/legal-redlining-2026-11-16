@@ -38,6 +38,7 @@ export class InMemoryDocumentStore implements DocumentStore {
     if (this.docs.has(id)) throw new Error(`document ${id} already exists`);
     const doc: Document = { id, title: input.title, text: input.text, version: 1 };
     this.docs.set(id, { doc, history: [] });
+    for (const listener of this.listeners) listener({ kind: "create", id, version: 1, ops: [] });
     return { ...doc };
   }
 
@@ -51,7 +52,7 @@ export class InMemoryDocumentStore implements DocumentStore {
       appliedAt: this.now().toISOString(),
       ops: ops.map((op) => ({ ...op })),
     });
-    for (const listener of this.listeners) listener({ id, version, ops });
+    for (const listener of this.listeners) listener({ kind: "commit", id, version, ops });
     return { ...entry.doc };
   }
 
