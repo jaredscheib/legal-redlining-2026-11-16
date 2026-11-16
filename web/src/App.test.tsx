@@ -17,6 +17,7 @@ const hit = (over: Partial<SearchHit>): SearchHit => ({
   highlights: [{ start: 0, end: 9 }],
   score: 1,
   matchedTerms: ["liability"],
+  stale: false,
   ...over,
 });
 
@@ -28,6 +29,7 @@ const searchBody = (over: Partial<SearchResponse>): SearchResponse => ({
   total: 0,
   results: [],
   documents: [],
+  indexing: [],
   ...over,
 });
 
@@ -207,6 +209,112 @@ describe("App", () => {
     await waitFor(() => expect(signals).toHaveLength(2));
     expect(signals[0]?.aborted).toBe(true);
     expect(signals[1]?.aborted).toBe(false);
+  });
+
+  describe("while a document is reindexing", () => {
+    const behind = [{ docId: "msa", title: "SaaS MSA", indexedVersion: 2, currentVersion: 3 }];
+    const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    it("shows the notice and 'updating' tags, polls, then replaces the results", async () => {
+      let plainCalls = 0;
+      mockApi({
+        "GET /search": (url) => {
+          const plain = url.searchParams.get("expand") === "false";
+          if (plain) plainCalls++;
+          // The first search and the first refresh are behind; the second refresh is current.
+          const stillBehind = plainCalls <= 2;
+          return json(
+            200,
+            searchBody({
+              total: 1,
+              results: [
+                stillBehind
+                  ? hit({ stale: true })
+                  : hit({ docVersion: 3, snippet: "Liability is capped at fees." }),
+              ],
+              indexing: stillBehind ? behind : [],
+            }),
+          );
+        },
+      });
+      render(<App version="dev" />);
+      search("liability");
+      expect(
+        await screen.findByText(
+          "Updating SaaS MSA (v2 → v3) — results may be out of date",
+          {},
+          { timeout: 2000 },
+        ),
+      ).toBeInTheDocument();
+      const list = screen.getByRole("list", { name: "Search results" });
+      expect(within(list).getByText("updating")).toBeInTheDocument();
+
+      await waitFor(() => expect(screen.queryByText(/results may be out of date/)).toBeNull(), {
+        timeout: 3000,
+      });
+      expect(within(list).queryByText("updating")).toBeNull();
+      expect(within(list).getByText("capped at fees.", { exact: false })).toBeInTheDocument();
+      // Synonyms are on: every refresh re-runs both phases.
+      const expandedCalls = calls("GET", "/search").filter(
+        ([input]) => new URL(input, "http://localhost").searchParams.get("expand") === "true",
+      );
+      expect(expandedCalls).toHaveLength(3);
+      expect(plainCalls).toBe(3);
+      // Current now: polling has stopped.
+      await pause(800);
+      expect(plainCalls).toBe(3);
+    });
+
+    it("gives up after 10 refreshes", async () => {
+      mockApi({
+        "GET /search": () =>
+          json(200, searchBody({ total: 1, results: [hit({ stale: true })], indexing: behind })),
+      });
+      render(<App version="dev" />);
+      fireEvent.click(screen.getByRole("switch", { name: /synonyms/i }));
+      search("liability");
+      await waitFor(() => expect(calls("GET", "/search")).toHaveLength(11), { timeout: 8000 });
+      await pause(800);
+      expect(calls("GET", "/search")).toHaveLength(11);
+      expect(screen.getByText(/results may be out of date/)).toBeInTheDocument();
+    }, 12000);
+
+    it("stops polling on a new query and on a clear", async () => {
+      mockApi({
+        "GET /search": (url) => {
+          const q = url.searchParams.get("q");
+          return json(
+            200,
+            searchBody({
+              total: 1,
+              results: [hit({ stale: q === "first" })],
+              indexing: q === "first" ? behind : [],
+            }),
+          );
+        },
+      });
+      render(<App version="dev" />);
+      search("first");
+      await screen.findByText(/results may be out of date/);
+      search("second");
+      await waitFor(() => expect(screen.queryByText(/results may be out of date/)).toBeNull());
+      const firstCalls = () =>
+        calls("GET", "/search").filter(
+          ([input]) => new URL(input, "http://localhost").searchParams.get("q") === "first",
+        ).length;
+      const before = firstCalls();
+      await pause(1200);
+      expect(firstCalls()).toBe(before);
+
+      search("first");
+      await screen.findByText(/results may be out of date/);
+      const beforeClear = firstCalls();
+      // Emptying the box clears the search.
+      fireEvent.change(screen.getByLabelText("Search contracts"), { target: { value: "" } });
+      await waitFor(() => expect(screen.queryByText(/results may be out of date/)).toBeNull());
+      await pause(1200);
+      expect(firstCalls()).toBe(beforeClear);
+    }, 8000);
   });
 
   async function openFirstHit() {

@@ -96,6 +96,12 @@ export const MAX_CHANGES_PER_REQUEST = 50;
 /** BM25 parameters for passage search. */
 export const BM25 = { k1: 1.2, b: 0.75 } as const;
 
+/**
+ * Re-index committed documents in a worker thread so a large reindex never blocks the event
+ * loop. `off` builds synchronously on the main thread instead.
+ */
+export const SEARCH_INDEX_WORKER: boolean = process.env.SEARCH_INDEX_WORKER !== "off";
+
 /** BM25 weight of each term a query expansion adds (query terms weigh 1). */
 export const EXPANSION_TERM_WEIGHT = 0.5;
 

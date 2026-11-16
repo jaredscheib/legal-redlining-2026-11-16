@@ -320,13 +320,15 @@ Code in `api/src/search/`.
    `off`.
 7. **Highlights.** Matching tokens and phrase matches inside the snippet, as merged
    `{start, end}` ranges relative to the snippet.
-8. **Reindexing.** The index subscribes to store changes. A created document is indexed at
-   once. An edited document is re-indexed after the write returns (`setImmediate`), with
-   repeated edits to one document coalesced; a search waits for any queued reindex, so
-   writes never wait and reads never see an older version. The whole document is rebuilt
-   (about 1–1.3 s at 10 MB), and on a single thread a search arriving meanwhile waits for it.
-   Next steps: a worker thread with self-describing staleness, then incremental reindexing
-   of only the changed passages.
+8. **Reindexing.** Documents are indexed as per-document segments. A created document is
+   indexed at once. An edited document is rebuilt in a `worker_threads` worker
+   (`SEARCH_INDEX_WORKER`, falls back to in-process) and swapped in (about 30 ms at 10 MB);
+   repeated edits coalesce and a late result never replaces a newer one. **Search never
+   waits:** responses list `indexing: [{docId, title, indexedVersion, currentVersion}]` for
+   documents still being rebuilt and mark each hit `stale`, and the UI shows "Updating …"
+   and re-queries every 500 ms until the index is current. Measured on 10 MB: a search
+   during a reindex answers in about 24 ms. Next: incremental reindexing of only the changed
+   passages, and streaming late results with server-sent events.
 
 **Complexity.** Building the index is O(n) in document size: one pass to split, one to
 tokenize. A query costs time proportional to the total length of the postings lists of its
@@ -528,10 +530,10 @@ data/               Logs, pids, ledger, evals output (git-ignored)
 
 ## What's next
 
-- **Reindexing off the main thread** with self-describing staleness: search answers at once,
-  lists documents still being re-indexed, marks stale hits, and the client refreshes when
-  they finish (later, streamed with server-sent events). Then incremental reindexing of only
-  the changed passages.
+- **Reindexing**: stream late results with server-sent events instead of polling; rebuild
+  only the changed passages.
+- **Collaboration policy per firm**: today writes are optimistic (`If-Match` optional); auto-
+  rebase on conflict, required `If-Match`, or check-out locks are a per-firm choice.
 - **Ranking**: fold heading passages into their clauses; tune the synonym weight.
 - **Version history**: list versions and view any past version read-only.
 - **Document import** for PDF and .docx.

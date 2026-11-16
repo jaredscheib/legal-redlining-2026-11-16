@@ -77,6 +77,7 @@ describe("runEvals", () => {
                   highlights: [],
                   matchedTerms: [],
                   score: 1,
+                  stale: false,
                 },
               ]
             : [];
@@ -88,6 +89,7 @@ describe("runEvals", () => {
           total: results.length,
           results,
           documents: results.map((r) => ({ docId: r.docId, title: r.title, passages: 1 })),
+          indexing: [],
         };
       },
     };

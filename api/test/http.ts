@@ -38,6 +38,7 @@ export const fakeSearch: SearchService = {
     total: 0,
     results: [],
     documents: [],
+    indexing: [],
   }),
 };
 
