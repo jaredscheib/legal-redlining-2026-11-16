@@ -206,6 +206,24 @@ describe("createSearchService", () => {
     expect(res.results[0]?.docVersion).toBe(2);
   });
 
+  it("reindexes a commit after the write returns, coalescing repeated commits", async () => {
+    const { store, search } = setup(docs);
+    const before = search.index.get("lease")?.version;
+    store.commit(
+      "lease",
+      "Tenant shall pay rent quarterly. Tenant shall keep the premises clean.",
+      [],
+    );
+    store.commit("lease", "Tenant shall pay rent yearly.", []);
+    // Nothing has been reindexed synchronously by the commits.
+    expect(search.index.get("lease")?.version).toBe(before);
+    expect(before).toBe(1);
+    const res = await search.search(q("yearly"));
+    expect(res.total).toBe(1);
+    expect(res.results[0]?.docVersion).toBe(3);
+    expect((await search.search(q("quarterly"))).total).toBe(0);
+  });
+
   it("indexes documents created after startup, and stops after close", async () => {
     const { store, search } = setup(docs);
     store.create({ id: "late", title: "Late", text: "Zebra crossing clause." });
