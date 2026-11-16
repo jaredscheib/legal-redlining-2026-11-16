@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { VERSION } from "./version";
+import "./styles.css";
 
 console.info(JSON.stringify({ event: "app.start", version: VERSION }));
 
