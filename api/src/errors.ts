@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { log } from "./log.js";
+import { REQUEST_ID_HEADER, matchedRoute, newRequestId } from "./request-id.js";
 
 /** Error body for every non-2xx response. `code` is the HTTP status. */
 export interface ErrorBody {
@@ -38,14 +39,15 @@ export function onError(err: Error, c: Context): Response {
   if (err instanceof ApiError) {
     return c.json(errorBody(err), err.status);
   }
-  const requestId = crypto.randomUUID();
+  // The request-id middleware set the id and the log context (reqId); reuse them.
+  const reqId = c.get("requestId") ?? newRequestId();
   log.error("http.unhandled", {
-    requestId,
+    reqId,
     method: c.req.method,
-    route: c.req.routePath,
+    route: matchedRoute(c),
     errorName: err.name,
   });
-  c.header("x-request-id", requestId);
+  c.header(REQUEST_ID_HEADER, reqId);
   const body: ErrorBody = { error: "Internal error", code: 500 };
   return c.json(body, 500);
 }

@@ -1,0 +1,62 @@
+{
+  "key": "99a83f9e093709a3158e5cfc96c7ea56041a46c43eb8cfab89bba99435d22bda",
+  "op": "expand",
+  "model": "claude-haiku-5-5",
+  "request": {
+    "model": "claude-haiku-5-5",
+    "system": "You expand search terms for a contract search engine used by lawyers.\nYou receive the key terms of one search, in the order the user typed them.\nFirst, group adjacent terms that together name one legal concept into a phrase (e.g. [\"confidential\", \"information\"] -> \"confidential information\"; [\"security\", \"deposit\"] -> \"security deposit\"). Leave a term on its own when it is not part of such a phrase. Expand a phrase as a whole, not its words separately.\nThen, for each term or phrase, return up to 3 alternatives that are likely to appear verbatim in contract text (e.g. terminate -> cancel, rescind, end; confidential information -> proprietary information, trade secrets).\nRules:\n- Prefer words and short phrases drafters actually use in agreements; match the part of speech where possible.\n- The search matches exact words with no stemming, so write each alternative in the form contracts most often use (e.g. singular nouns: \"employee\", not \"employees\").\n- Do not repeat the term itself or simple inflections of it (terminate/terminated/termination).\n- Do not include broader concepts or explanations; if a term or phrase has no good equivalents, return an empty list for it.\n- \"term\" is the single term or the grouped phrase, written with the input words in order.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Terms: [\"cap\",\"fees\",\"paid\"]"
+      }
+    ],
+    "schema": {
+      "type": "object",
+      "properties": {
+        "expansions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "term": {
+                "type": "string"
+              },
+              "alternatives": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "term",
+              "alternatives"
+            ]
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "expansions"
+      ],
+      "description": "{$schema: \"https://json-schema.org/draft/2020-12/schema\"}"
+    },
+    "maxTokens": 200,
+    "effort": "low",
+    "thinking": "disabled"
+  },
+  "response": {
+    "text": "{\"expansions\":[{\"term\":\"cap fees\",\"alternatives\":[\"fee cap\",\"limit on fees\",\"maximum fees\"]},{\"term\":\"paid\",\"alternatives\":[\"payable\",\"remitted\",\"disbursed\"]}]}",
+    "stopReason": "end_turn",
+    "model": "claude-haiku-5-5"
+  },
+  "usage": {
+    "inputTokens": 770,
+    "outputTokens": 73,
+    "cacheReadTokens": 0,
+    "cacheWriteTokens": 0
+  },
+  "recordedAt": "2026-11-16T22:29:35.528Z"
+}

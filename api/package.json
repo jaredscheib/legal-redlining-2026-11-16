@@ -10,7 +10,8 @@
     "test": "vitest run",
     "evals": "tsx scripts/run-evals.ts",
     "spend": "tsx scripts/spend.ts",
-    "bench": "tsx scripts/bench.ts"
+    "bench": "tsx scripts/bench.ts",
+    "compare-expansion": "tsx scripts/compare-expansion.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.7.0",

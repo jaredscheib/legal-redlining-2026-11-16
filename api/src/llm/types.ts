@@ -10,13 +10,20 @@ export interface LlmMessage {
 export interface LlmCallInput<T> {
   /** Short operation name for logs and the ledger, e.g. "suggest" or "expand". */
   op: string;
+  /** Model id, e.g. EXPANSION_MODEL or SUGGESTION_MODEL from config. Part of the replay key. */
+  model: string;
   system: string;
   messages: LlmMessage[];
   schema: ZodType<T>;
   maxTokens: number;
   effort: Effort;
+  /** "disabled" turns thinking off (Haiku 5.5 at effort high or below; Sonnet 5.5 rejects it). */
+  thinking?: Thinking;
   timeoutMs: number;
 }
+
+/** Omitted means the model default (adaptive on the 5.5 models). */
+export type Thinking = "disabled";
 
 export interface LlmUsage {
   inputTokens: number;
@@ -42,6 +49,7 @@ export interface CanonicalRequest {
   schema: Record<string, unknown>;
   maxTokens: number;
   effort: Effort;
+  thinking?: Thinking;
 }
 
 export interface TransportResponse {
