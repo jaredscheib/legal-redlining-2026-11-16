@@ -29,6 +29,16 @@ export interface SearchHit {
   highlights: { start: number; end: number }[];
   score: number;
   matchedTerms: string[];
+  /** The document has moved past `docVersion` and is still being reindexed. */
+  stale: boolean;
+}
+
+/** A document whose search index is behind its latest version. */
+export interface SearchIndexing {
+  docId: string;
+  title: string;
+  indexedVersion: number;
+  currentVersion: number;
 }
 
 export interface SearchExpansion {
@@ -46,6 +56,8 @@ export interface SearchResponse {
   results: SearchHit[];
   /** Every matching document with its passage count, over all matches (not just this page). */
   documents: SearchDocumentCount[];
+  /** Documents in scope still being reindexed; empty when every result is current. */
+  indexing: SearchIndexing[];
 }
 
 export interface SearchDocumentCount {
