@@ -1,6 +1,6 @@
 name: ci
 # Run once per merge, by hand, after `make check` passes locally: gh workflow run ci.yml --ref <branch>
-# The project's first ticket adds its toolchain setup. Actions minutes are paid: keep every cap below.
+# Actions minutes are paid: keep every cap below.
 on:
   workflow_dispatch:
 concurrency:
@@ -12,4 +12,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
       - run: make check
+        env:
+          LLM_MODE: replay

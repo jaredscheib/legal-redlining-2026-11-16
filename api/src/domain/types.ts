@@ -1,0 +1,155 @@
+/** Domain model and service contracts. Offsets are UTF-16 code-unit indexes into `text`. */
+
+export interface Document {
+  id: string;
+  title: string;
+  text: string;
+  /** Starts at 1; each commit bumps it by one. */
+  version: number;
+}
+
+export interface DocumentSummary {
+  id: string;
+  title: string;
+  version: number;
+  length: number;
+}
+
+/** One replacement over [start, end) of the text it was computed against. */
+export interface ChangeOp {
+  start: number;
+  end: number;
+  oldText: string;
+  newText: string;
+}
+
+export interface ChangeLogEntry {
+  /** The version this commit produced. */
+  version: number;
+  appliedAt: string;
+  ops: ChangeOp[];
+}
+
+export interface Segment {
+  type: "equal" | "delete" | "insert";
+  text: string;
+}
+
+export interface RedlineHunk {
+  /** Index into the request's `changes` array. */
+  changeIndex: number;
+  start: number;
+  end: number;
+  before: string;
+  after: string;
+  segments: Segment[];
+}
+
+export type ChangeListener = (event: { id: string; version: number; ops: ChangeOp[] }) => void;
+
+export interface DocumentStore {
+  list(): DocumentSummary[];
+  get(id: string): Document | undefined;
+  create(input: { title: string; text: string; id?: string }): Document;
+  /** Replaces the text, bumps the version and appends to the history. Throws if `id` is unknown. */
+  commit(id: string, newText: string, ops: ChangeOp[]): Document;
+  history(id: string): ChangeLogEntry[] | undefined;
+  /** Returns an unsubscribe function. */
+  onChange(listener: ChangeListener): () => void;
+}
+
+// ---------------------------------------------------------------- Search (future)
+
+export interface SearchQuery {
+  q: string;
+  docIds?: string[];
+  limit: number;
+  offset: number;
+  expand: boolean;
+}
+
+export interface SearchHit {
+  docId: string;
+  title: string;
+  docVersion: number;
+  start: number;
+  end: number;
+  snippet: string;
+  /** Offsets relative to `snippet`. */
+  highlights: { start: number; end: number }[];
+  score: number;
+}
+
+export interface SearchExpansion {
+  status: "applied" | "skipped" | "off";
+  added: string[];
+  reason?: string;
+}
+
+export interface SearchResponse {
+  query: string;
+  terms: string[];
+  phrases: string[];
+  expansion: SearchExpansion;
+  total: number;
+  results: SearchHit[];
+}
+
+export interface SearchService {
+  search(query: SearchQuery): Promise<SearchResponse>;
+}
+
+// ---------------------------------------------------------------- LLM (future)
+
+export interface ExpansionResult {
+  added: string[];
+}
+
+export interface SuggestionInput {
+  text: string;
+  instruction?: string;
+}
+
+export interface SuggestionResult {
+  replacement: string;
+  rationale: string;
+  model: string;
+}
+
+export interface LlmService {
+  expand(terms: string[]): Promise<ExpansionResult>;
+  suggest(input: SuggestionInput): Promise<SuggestionResult>;
+}
+
+// ---------------------------------------------------------------- Edits (future)
+
+export interface ReplaceChange {
+  operation: "replace";
+  target: { text: string; occurrence?: number };
+  replacement: string;
+}
+
+export interface PatchDocumentRequest {
+  changes: ReplaceChange[];
+}
+
+export interface PatchDocumentResponse {
+  id: string;
+  version: number;
+  dryRun: boolean;
+  text: string;
+  redline: RedlineHunk[];
+}
+
+export interface ChangesResponse {
+  id: string;
+  version: number;
+  changes: ChangeLogEntry[];
+}
+
+export interface SuggestionRequest {
+  range: { start: number; end: number };
+  instruction?: string;
+}
+
+export type SuggestionResponse = SuggestionResult;
