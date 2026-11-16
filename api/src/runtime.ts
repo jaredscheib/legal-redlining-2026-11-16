@@ -4,6 +4,7 @@
  */
 import type { AppDeps } from "./routes/deps.js";
 import { createLlmClient, type LlmClient } from "./llm/client.js";
+import { createSearchService } from "./search/service.js";
 import { InMemoryDocumentStore } from "./store/memory.js";
 import { seedStore } from "./store/seed.js";
 
@@ -17,6 +18,8 @@ export function createRuntime(opts: { llmClient?: LlmClient } = {}): Runtime {
   const store = new InMemoryDocumentStore();
   const seeded = seedStore(store);
   const llmClient = opts.llmClient ?? createLlmClient();
-  // Search and LLM services land in later tickets; until then their routes answer 501.
-  return { deps: { store }, llmClient, seeded };
+  // Query expansion and the LLM service land in later tickets; until then search runs
+  // unexpanded and the suggestion route answers 501.
+  const search = createSearchService({ store });
+  return { deps: { store, search }, llmClient, seeded };
 }

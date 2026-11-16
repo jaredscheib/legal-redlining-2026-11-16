@@ -45,7 +45,13 @@ export interface RedlineHunk {
   segments: Segment[];
 }
 
-export type ChangeListener = (event: { id: string; version: number; ops: ChangeOp[] }) => void;
+/** Fired after `create` (version 1, no ops) and after every `commit`. */
+export type ChangeListener = (event: {
+  kind: "create" | "commit";
+  id: string;
+  version: number;
+  ops: ChangeOp[];
+}) => void;
 
 export interface DocumentStore {
   list(): DocumentSummary[];
@@ -77,6 +83,8 @@ export interface SearchHit {
   snippet: string;
   /** Offsets relative to `snippet`. */
   highlights: { start: number; end: number }[];
+  /** Query and expansion terms (lowercased) that occur in this passage. */
+  matchedTerms: string[];
   score: number;
 }
 

@@ -51,7 +51,7 @@ export const PROJECT_BUDGET_USD = 30;
 /** One spend ledger per project; the Makefile points it at the main checkout's data/. */
 export const LLM_LEDGER_PATH: string | undefined = process.env.LLM_LEDGER_PATH || undefined;
 
-/** Max chars of a passage sent for a suggestion. */
+/** Max chars of a passage sent for a suggestion; also the longest search passage. */
 export const PASSAGE_MAX_CHARS = 400;
 
 /** Max chars of surrounding text on each side of a redline hunk. */
@@ -59,6 +59,12 @@ export const REDLINE_CONTEXT_CHARS = 80;
 
 /** Max changes in one PATCH. The engine handles any number of non-overlapping changes. */
 export const MAX_CHANGES_PER_REQUEST = 1;
+
+/** BM25 parameters for passage search. */
+export const BM25 = { k1: 1.2, b: 0.75 } as const;
+
+/** BM25 weight of each term a query expansion adds (query terms weigh 1). */
+export const EXPANSION_TERM_WEIGHT = 0.5;
 
 export const PATHS = {
   apiRoot: API_ROOT,

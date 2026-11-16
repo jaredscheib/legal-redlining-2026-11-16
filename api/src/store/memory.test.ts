@@ -34,16 +34,28 @@ describe("InMemoryDocumentStore", () => {
     expect(() => new InMemoryDocumentStore().commit("nope", "x", [])).toThrow();
   });
 
-  it("notifies onChange listeners and supports unsubscribe", () => {
+  it("notifies onChange listeners of commits and supports unsubscribe", () => {
     const store = new InMemoryDocumentStore();
     const { id } = store.create({ title: "T", text: "a" });
     const listener = vi.fn();
     const off = store.onChange(listener);
-    store.commit(id, "b", []);
-    expect(listener).toHaveBeenCalledWith({ id, version: 2, ops: [] });
+    const op = { start: 0, end: 1, oldText: "a", newText: "b" };
+    store.commit(id, "b", [op]);
+    expect(listener).toHaveBeenCalledWith({ kind: "commit", id, version: 2, ops: [op] });
     off();
     store.commit(id, "c", []);
+    store.create({ title: "T2", text: "z" });
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("notifies onChange listeners of creates, after the document is readable", () => {
+    const store = new InMemoryDocumentStore();
+    const seen: (string | undefined)[] = [];
+    const listener = vi.fn((e: { id: string }) => seen.push(store.get(e.id)?.text));
+    store.onChange(listener);
+    const doc = store.create({ id: "new", title: "T", text: "hello" });
+    expect(listener).toHaveBeenCalledWith({ kind: "create", id: doc.id, version: 1, ops: [] });
+    expect(seen).toEqual(["hello"]);
   });
 
   it("returns copies, so callers cannot mutate stored state", () => {

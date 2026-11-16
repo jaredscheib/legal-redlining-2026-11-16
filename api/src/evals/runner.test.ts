@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LlmService, SearchService } from "../domain/types.js";
+import { createSearchService } from "../search/service.js";
 import { InMemoryDocumentStore } from "../store/memory.js";
 import { readSeedFiles, seedStore } from "../store/seed.js";
 import { loadScenarios, p50, probeWord, runEvals } from "./runner.js";
@@ -79,6 +80,7 @@ describe("runEvals", () => {
                   end: start + needle.length,
                   snippet: needle,
                   highlights: [],
+                  matchedTerms: [],
                   score: 1,
                 },
               ]
@@ -126,6 +128,33 @@ describe("runEvals", () => {
         "search_again",
       ]),
     );
+  });
+});
+
+describe("runEvals with the BM25 search service (no expansion)", () => {
+  it("scores the search scenarios and reaches the suggest step", async () => {
+    const summary = await runEvals({
+      makeDeps: () => {
+        const store = seeded();
+        return { store, search: createSearchService({ store }) };
+      },
+      llmStats: noLlm,
+      llmMode: "replay",
+      scenarios,
+    });
+    const lexical = summary.search.cases.filter((c) => !c.needsExpansion);
+    const hits = summary.search.cases.filter((c) => c.pass);
+    console.log(
+      `search hit@3 without expansion: ${hits.length}/${summary.search.total} ` +
+        `(lexical ${lexical.filter((c) => c.pass).length}/${lexical.length}); ` +
+        summary.search.cases.map((c) => `${c.id}=${c.rank ?? c.reason}`).join(" "),
+    );
+    // A floor, not a target: synonym-only cases need expansion, and s03 currently ranks 4th
+    // behind its own "Security Deposit." heading and two sibling clauses.
+    expect(hits.length).toBeGreaterThanOrEqual(5);
+    const quoted = summary.search.cases.filter((c) => c.id.includes("quoted"));
+    expect(quoted.map((c) => c.rank)).toEqual([1, 1]);
+    expect(summary.flow.failedAt).toEqual({ suggest: 3 });
   });
 });
 
