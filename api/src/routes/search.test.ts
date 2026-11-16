@@ -7,7 +7,7 @@ import { createRuntime } from "../runtime.js";
 let app: ReturnType<typeof createApp>;
 
 beforeEach(() => {
-  // The production wiring: seeded store plus search, no expander.
+  // The production wiring: seeded store, search and the LLM expander (replay mode in tests).
   app = createApp(createRuntime().deps);
 });
 
@@ -17,8 +17,15 @@ const get = async (url: string) => {
 };
 
 describe("GET /search against the seed contracts", () => {
+  it("expansion is wired: with no recording it is skipped and search still answers", async () => {
+    const { status, body } = await get("/search?q=zzqxv%20rent");
+    expect(status).toBe(200);
+    expect(body.expansion).toEqual({ status: "skipped", added: [], reason: "no_recording" });
+    expect(body.total).toBeGreaterThan(0);
+  });
+
   it('"confidential information" returns NDA passages first', async () => {
-    const { status, body } = await get("/search?q=confidential%20information");
+    const { status, body } = await get("/search?q=confidential%20information&expand=false");
     expect(status).toBe(200);
     expect(body.terms).toEqual(["confidential", "information"]);
     expect(body.expansion).toEqual({ status: "off", added: [] });
