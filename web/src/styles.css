@@ -506,6 +506,12 @@ mark {
   max-width: 76ch;
 }
 
+.doc-text:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 6px;
+  border-radius: 2px;
+}
+
 .doc-selection {
   background: #dbe6f7;
   box-shadow: 0 0 0 2px #dbe6f7;

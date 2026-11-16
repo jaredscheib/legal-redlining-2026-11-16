@@ -353,6 +353,34 @@ describe("App", () => {
     expect(screen.queryByRole("region", { name: "Edit passage" })).not.toBeInTheDocument();
   });
 
+  it("opens the edit panel on a keyboard selection when Shift is released", async () => {
+    mockApi({});
+    render(<App version="dev" />);
+    await screen.findByRole("option", { name: "SaaS MSA" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Document" }), {
+      target: { value: "msa" },
+    });
+    const pre = await screen.findByTestId("doc-text");
+    const textNode = pre.firstChild;
+    if (!textNode) throw new Error("no text node");
+
+    // Shift+arrows extend a selection over "six months".
+    const range = document.createRange();
+    range.setStart(textNode, 23);
+    range.setEnd(textNode, 33);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    fireEvent.keyUp(pre, { key: "ArrowRight", shiftKey: true });
+    expect(screen.queryByRole("region", { name: "Edit passage" })).not.toBeInTheDocument();
+
+    fireEvent.keyUp(pre, { key: "Shift" });
+    const panel = await screen.findByRole("region", { name: "Edit passage" });
+    expect(within(panel).getByLabelText("Replacement")).toHaveValue("six months");
+    expect(pre.querySelector("mark")).toHaveTextContent("six months");
+    selection?.removeAllRanges();
+  });
+
   it("says Claude is unavailable when suggestions return 503", async () => {
     mockApi({
       "GET /search": () => json(200, searchBody({ total: 1, results: [hit({})] })),
