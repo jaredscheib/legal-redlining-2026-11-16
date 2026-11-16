@@ -446,7 +446,7 @@ describe("App", () => {
     );
   });
 
-  it("opens an outdated hit without a selection and says the passage may have moved", async () => {
+  it("opens an outdated hit without a selection and says it is from an older version", async () => {
     mockApi({
       "GET /search": () => json(200, searchBody({ total: 1, results: [hit({ docVersion: 1 })] })),
     });
@@ -455,7 +455,9 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: /SaaS MSA.*capped at six/s }));
 
     expect(
-      await screen.findByText("This passage may have moved — search again."),
+      await screen.findByText(
+        "This passage is from an older version. Results refresh once indexing catches up, or select the text in the document.",
+      ),
     ).toBeInTheDocument();
     expect(screen.getByTestId("doc-text")).toHaveTextContent(TEXT);
     expect(screen.getByTestId("doc-text").querySelector("mark")).toBeNull();

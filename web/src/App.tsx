@@ -247,7 +247,8 @@ export function App({ version }: { version: string }) {
               />
             ) : staleHit ? (
               <p className="notice notice-quiet" role="status">
-                This passage may have moved — search again.
+                This passage is from an older version. Results refresh once indexing catches up, or
+                select the text in the document.
               </p>
             ) : applied ? (
               <p className="notice notice-success" role="status">
