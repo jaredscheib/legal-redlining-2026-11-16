@@ -554,6 +554,23 @@ describe("App", () => {
     selection?.removeAllRanges();
   });
 
+  it("shows the open document's ID in the header", async () => {
+    mockApi({ "GET /search": () => json(200, searchBody({ total: 1, results: [hit({})] })) });
+    await openFirstHit();
+    const id = screen.getByLabelText("Document ID");
+    expect(id.tagName).toBe("CODE");
+    expect(id).toHaveTextContent(/^msa$/);
+  });
+
+  it("caps the Claude instruction at the API's 1000 characters", async () => {
+    mockApi({ "GET /search": () => json(200, searchBody({ total: 1, results: [hit({})] })) });
+    const panel = await openFirstHit();
+    expect(within(panel).getByLabelText("Instruction for Claude (optional)")).toHaveAttribute(
+      "maxLength",
+      "1000",
+    );
+  });
+
   it("says Claude is unavailable when suggestions return 503", async () => {
     mockApi({
       "GET /search": () => json(200, searchBody({ total: 1, results: [hit({})] })),

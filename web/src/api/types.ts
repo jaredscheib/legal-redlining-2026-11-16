@@ -112,3 +112,6 @@ export interface ErrorBody {
 
 /** Longest range the suggestions route accepts (PASSAGE_MAX_CHARS in api/src/config.ts). */
 export const PASSAGE_MAX_CHARS = 400;
+
+/** Longest instruction the suggestions route accepts (`.max(1000)` in api/src/routes/suggestions.ts). */
+export const INSTRUCTION_MAX_CHARS = 1000;

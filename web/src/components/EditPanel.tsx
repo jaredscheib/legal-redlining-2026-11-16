@@ -8,6 +8,7 @@ import {
   suggest,
 } from "../api/client";
 import {
+  INSTRUCTION_MAX_CHARS,
   PASSAGE_MAX_CHARS,
   type PatchDocumentResponse,
   type RedlineHunk,
@@ -160,6 +161,7 @@ export function EditPanel({
               type="text"
               aria-label="Instruction for Claude (optional)"
               placeholder="Optional instruction, e.g. make the cap twelve months"
+              maxLength={INSTRUCTION_MAX_CHARS}
               value={instruction}
               onChange={(e) => setInstruction(e.target.value)}
               disabled={tooLongForClaude}
