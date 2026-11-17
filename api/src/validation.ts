@@ -67,6 +67,30 @@ export function issueSummary(issues: readonly core.$ZodIssue[], target: Target):
 }
 
 /**
+ * `application/json`, optionally with parameters such as `; charset=utf-8`. The same pattern
+ * Hono's validator reads a JSON body under, so a body this accepts is never silently ignored.
+ */
+const JSON_MEDIA_TYPE = /^application\/json(;\s*[a-zA-Z0-9-]+=([^;]+))*$/i;
+
+/**
+ * 415 UNSUPPORTED_MEDIA_TYPE unless the body is declared `application/json`. A body sent with
+ * no Content-Type is unsupported too; no body and no Content-Type falls through to the JSON
+ * parse, which reports it.
+ */
+async function requireJsonMediaType(c: Context): Promise<void> {
+  const contentType = c.req.header("content-type");
+  if (contentType !== undefined && JSON_MEDIA_TYPE.test(contentType)) return;
+  if (contentType === undefined && (await c.req.text()) === "") return;
+  throw new ApiError(
+    415,
+    "UNSUPPORTED_MEDIA_TYPE",
+    contentType === undefined
+      ? "the request body needs Content-Type: application/json"
+      : `Content-Type must be application/json, not ${contentType.split(";")[0]?.trim()}`,
+  );
+}
+
+/**
  * Parses the JSON body up front so a syntax error gets its own message. Hono caches the
  * parsed body, so the validator after it does not parse again.
  */
@@ -80,7 +104,8 @@ async function parseJsonBody(c: Context): Promise<void> {
 
 /**
  * zod validation that fails with 400 INVALID_PAYLOAD: `error` names the first issue's path and
- * problem, and `details.issues` has every zod issue.
+ * problem, and `details.issues` has every zod issue. For a JSON body the media type is checked
+ * first (415) and then the syntax (400).
  */
 export function validate<T extends ZodType, K extends Target>(target: K, schema: T) {
   const check = zValidator(target, schema, (result) => {
@@ -92,6 +117,7 @@ export function validate<T extends ZodType, K extends Target>(target: K, schema:
   });
   if (target !== "json") return check;
   const withBody: typeof check = async (c, next) => {
+    await requireJsonMediaType(c);
     await parseJsonBody(c);
     return check(c, next);
   };

@@ -6,9 +6,9 @@ import { validate } from "../validation.js";
 import { requireDocument } from "./documents.js";
 import type { Registrar } from "./deps.js";
 
-const SuggestionBody = z.object({
+const SuggestionBody = z.strictObject({
   range: z
-    .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
+    .strictObject({ start: z.number().int().min(0), end: z.number().int().min(0) })
     .refine((r) => r.end > r.start, { message: "end must be greater than start" })
     .refine((r) => r.end - r.start <= PASSAGE_MAX_CHARS, {
       message: `range must be at most ${PASSAGE_MAX_CHARS} characters`,

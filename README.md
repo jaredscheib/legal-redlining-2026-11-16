@@ -87,6 +87,18 @@ samples/requests.sh http://localhost:8787    # one sample request per endpoint
 
 JSON in and out. `samples/requests.sh [base-url]` exercises every route below.
 
+**Request validation.** Validation is strict:
+
+- Every body and query object rejects keys it does not know with `400 INVALID_PAYLOAD`, at
+  every level, so a misspelled `occurence`, `expected_text` or `?dryrun=true` fails instead of
+  being ignored. `error` names the first problem, e.g.
+  `changes[0].target: unrecognized key "occurence"`.
+- A `POST` or `PATCH` body must be sent as `Content-Type: application/json` (parameters such
+  as `; charset=utf-8` are fine). Any other type, or a body with no `Content-Type` (curl's
+  `-d` without `-H` sends form-urlencoded), is `415 UNSUPPORTED_MEDIA_TYPE`.
+- Checks run in this order: `415` media type, `400` body (syntax, then schema), `400` query,
+  `404` document, `412` `If-Match`, then the `422` checks against the text.
+
 **Offsets.** Every `start` and `end` is a **UTF-16 code unit** index into the document text,
 the same as a JavaScript string index, and ranges are half-open `[start, end)`:
 `text.slice(start, end)` is the passage. Clients in other languages must convert (an emoji
@@ -261,22 +273,23 @@ Every non-2xx response has the same shape. `code` repeats the HTTP status and
 }
 ```
 
-| Status | `reason`                  | When                                                                                                                                                                                                                                 |
-| ------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 400    | `INVALID_PAYLOAD`         | Malformed JSON (`error` is `request body is not valid JSON`) or a failed validation: `error` names the first issue's path and problem, e.g. `instruction: must be at most 1000 characters`, and `details.issues` has every zod issue |
-| 404    | `DOCUMENT_NOT_FOUND`      | Unknown document id, in the path or in `docId`                                                                                                                                                                                       |
-| 404    | `ROUTE_NOT_FOUND`         | No such path                                                                                                                                                                                                                         |
-| 405    | `METHOD_NOT_ALLOWED`      | A known path with an unsupported method, e.g. `DELETE /documents/:id`; the `Allow` header and `details.allowed` list the methods                                                                                                     |
-| 422    | `TARGET_NOT_FOUND`        | `target.text` does not occur in the document (`details.changeIndex`)                                                                                                                                                                 |
-| 422    | `OCCURRENCE_OUT_OF_RANGE` | Fewer occurrences than requested (`details.found`)                                                                                                                                                                                   |
-| 412    | `VERSION_CONFLICT`        | `If-Match` does not strongly match the current version, or is malformed (`details.currentVersion`)                                                                                                                                   |
-| 422    | `OVERLAPPING_CHANGES`     | Two changes overlap or start at the same offset (`details.changeIndexes` and `details.ranges` of both)                                                                                                                               |
-| 422    | `RANGE_OUT_OF_BOUNDS`     | A `range` change outside the document (`details.changeIndex`), or a suggestion range past its end (`details.length`)                                                                                                                 |
-| 422    | `SPLITS_CHARACTER`        | A change would start or end between the two halves of a UTF-16 surrogate pair, e.g. inside an emoji (`details.changeIndex`)                                                                                                          |
-| 422    | `EXPECTED_TEXT_MISMATCH`  | A `range` change whose `expectedText` differs (`details.changeIndex`)                                                                                                                                                                |
-| 502    | `LLM_ERROR`               | The model answered with unusable output                                                                                                                                                                                              |
-| 503    | `LLM_UNAVAILABLE`         | No API key, no recording in replay mode, timeout or API error                                                                                                                                                                        |
-| 500    | none                      | Unexpected; the body is generic and the `x-request-id` header matches the `http.unhandled` log line                                                                                                                                  |
+| Status | `reason`                  | When                                                                                                                                                                                                                                                           |
+| ------ | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `INVALID_PAYLOAD`         | Malformed JSON (`error` is `request body is not valid JSON`) or a failed validation, including an unknown key: `error` names the first issue's path and problem, e.g. `instruction: must be at most 1000 characters`, and `details.issues` has every zod issue |
+| 404    | `DOCUMENT_NOT_FOUND`      | Unknown document id, in the path or in `docId`                                                                                                                                                                                                                 |
+| 404    | `ROUTE_NOT_FOUND`         | No such path                                                                                                                                                                                                                                                   |
+| 405    | `METHOD_NOT_ALLOWED`      | A known path with an unsupported method, e.g. `DELETE /documents/:id`; the `Allow` header and `details.allowed` list the methods                                                                                                                               |
+| 422    | `TARGET_NOT_FOUND`        | `target.text` does not occur in the document (`details.changeIndex`)                                                                                                                                                                                           |
+| 422    | `OCCURRENCE_OUT_OF_RANGE` | Fewer occurrences than requested (`details.found`)                                                                                                                                                                                                             |
+| 412    | `VERSION_CONFLICT`        | `If-Match` does not strongly match the current version, or is malformed (`details.currentVersion`)                                                                                                                                                             |
+| 415    | `UNSUPPORTED_MEDIA_TYPE`  | A `POST` or `PATCH` body that is not `Content-Type: application/json`, or has no `Content-Type`                                                                                                                                                                |
+| 422    | `OVERLAPPING_CHANGES`     | Two changes overlap or start at the same offset (`details.changeIndexes` and `details.ranges` of both)                                                                                                                                                         |
+| 422    | `RANGE_OUT_OF_BOUNDS`     | A `range` change outside the document (`details.changeIndex`), or a suggestion range past its end (`details.length`)                                                                                                                                           |
+| 422    | `SPLITS_CHARACTER`        | A change would start or end between the two halves of a UTF-16 surrogate pair, e.g. inside an emoji (`details.changeIndex`)                                                                                                                                    |
+| 422    | `EXPECTED_TEXT_MISMATCH`  | A `range` change whose `expectedText` differs (`details.changeIndex`)                                                                                                                                                                                          |
+| 502    | `LLM_ERROR`               | The model answered with unusable output                                                                                                                                                                                                                        |
+| 503    | `LLM_UNAVAILABLE`         | No API key, no recording in replay mode, timeout or API error                                                                                                                                                                                                  |
+| 500    | none                      | Unexpected; the body is generic and the `x-request-id` header matches the `http.unhandled` log line                                                                                                                                                            |
 
 ## Search
 
