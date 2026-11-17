@@ -84,13 +84,14 @@ export const registerDocumentRoutes: Registrar = (app, { store }) => {
       checkIfMatch(c.req.header("If-Match"), doc.version);
 
       const resolved = resolveChanges(doc.text, changes);
+      // Applied with their changeIndex, so an overlap names the colliding changes.
+      const text = applyOps(doc.text, resolved);
       const ops: ChangeOp[] = resolved.map(({ start, end, oldText, newText }) => ({
         start,
         end,
         oldText,
         newText,
       }));
-      const text = applyOps(doc.text, ops);
       const redline = buildRedline(doc.text, resolved);
       const version = dryRun ? doc.version : store.commit(doc.id, text, ops).version;
 

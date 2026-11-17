@@ -57,6 +57,26 @@ describe("applyOps", () => {
     );
   });
 
+  it("names both colliding changes' indexes and ranges when ops carry a changeIndex", () => {
+    const tagged = (changeIndex: number, start: number, end: number) => ({
+      ...op(TEXT, start, end, "x"),
+      changeIndex,
+    });
+    let details: unknown;
+    try {
+      applyOps(TEXT, [tagged(0, 20, 22), tagged(1, 4, 12), tagged(2, 0, 8)]);
+    } catch (err) {
+      details = (err as ApiError).details;
+    }
+    expect(details).toEqual({
+      changeIndexes: [2, 1],
+      ranges: [
+        { start: 0, end: 8 },
+        { start: 4, end: 12 },
+      ],
+    });
+  });
+
   it("allows adjacent ops", () => {
     expect(applyOps("abcd", [op("abcd", 0, 2, "X"), op("abcd", 2, 4, "Y")])).toBe("XY");
   });

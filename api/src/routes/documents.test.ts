@@ -167,7 +167,16 @@ describe("PATCH /documents/:id with several changes", () => {
       changes: [replace("thirty (30) days", "x"), replace("(30) days. Late", "y")],
     });
     expect(res.status).toBe(422);
-    expect((await readJson(res)).details.reason).toBe("OVERLAPPING_CHANGES");
+    const thirty = TEXT.indexOf("thirty (30) days");
+    const paren = TEXT.indexOf("(30) days. Late");
+    expect((await readJson(res)).details).toEqual({
+      reason: "OVERLAPPING_CHANGES",
+      changeIndexes: [0, 1],
+      ranges: [
+        { start: thirty, end: thirty + 16 },
+        { start: paren, end: paren + 15 },
+      ],
+    });
     expect(store.get("doc")).toMatchObject({ text: TEXT, version: 1 });
     expect(store.history("doc")).toEqual([]);
   });
@@ -298,8 +307,48 @@ describe("PATCH /documents/:id with range changes", () => {
       ],
     });
     expect(res.status).toBe(422);
-    expect((await readJson(res)).details.reason).toBe("OVERLAPPING_CHANGES");
+    expect((await readJson(res)).details).toMatchObject({
+      reason: "OVERLAPPING_CHANGES",
+      changeIndexes: [0, 2],
+    });
     expect(store.get("doc")?.version).toBe(1);
+  });
+
+  describe("a change that would split a character", () => {
+    // "😀" is one character but two UTF-16 code units, 5 and 6.
+    const EMOJI = "Smile😀 please.";
+    beforeEach(() => {
+      store.create({ id: "emoji", title: "Emoji", text: EMOJI });
+    });
+
+    it.each([
+      ["a range ending inside it", rangeChange(5, 6, "x")],
+      ["a range starting inside it", rangeChange(6, 7, "x")],
+      [
+        "a target naming half of it",
+        { operation: "replace", target: { text: "\ud83d" }, replacement: "x" },
+      ],
+      [
+        "a target naming the other half",
+        { operation: "replace", target: { text: "\ude00 " }, replacement: "" },
+      ],
+    ])("422s SPLITS_CHARACTER for %s and changes nothing", async (_name, change) => {
+      const res = await patch("/documents/emoji", {
+        changes: [rangeChange(0, 5, "Grin"), change],
+      });
+      expect(res.status).toBe(422);
+      expect((await readJson(res)).details).toMatchObject({
+        reason: "SPLITS_CHARACTER",
+        changeIndex: 1,
+      });
+      expect(store.get("emoji")).toMatchObject({ text: EMOJI, version: 1 });
+    });
+
+    it("accepts a range around the whole character", async () => {
+      const res = await patch("/documents/emoji", { changes: [rangeChange(5, 7, "🙂")] });
+      expect(res.status).toBe(200);
+      expect(store.get("emoji")?.text).toBe("Smile🙂 please.");
+    });
   });
 
   it.each([

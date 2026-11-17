@@ -24,6 +24,33 @@ export function findOccurrence(
   return { found };
 }
 
+const isHighSurrogate = (code: number) => code >= 0xd800 && code <= 0xdbff;
+const isLowSurrogate = (code: number) => code >= 0xdc00 && code <= 0xdfff;
+
+/** Whether `offset` falls between the two halves of a UTF-16 surrogate pair in `text`. */
+export function splitsSurrogatePair(text: string, offset: number): boolean {
+  return (
+    offset > 0 &&
+    offset < text.length &&
+    isHighSurrogate(text.charCodeAt(offset - 1)) &&
+    isLowSurrogate(text.charCodeAt(offset))
+  );
+}
+
+/** 422 SPLITS_CHARACTER when a resolved change would cut a character in half. */
+function checkWholeCharacters(text: string, resolved: ResolvedChange): ResolvedChange {
+  const { start, end, changeIndex } = resolved;
+  if (splitsSurrogatePair(text, start) || splitsSurrogatePair(text, end)) {
+    throw new ApiError(
+      422,
+      "SPLITS_CHARACTER",
+      "the change starts or ends between the two halves of a character (a UTF-16 surrogate pair)",
+      { changeIndex, start, end },
+    );
+  }
+  return resolved;
+}
+
 function resolveRange(
   text: string,
   change: ReplaceRangeChange,
@@ -47,7 +74,13 @@ function resolveRange(
       { changeIndex },
     );
   }
-  return { changeIndex, start, end, oldText, newText: change.replacement };
+  return checkWholeCharacters(text, {
+    changeIndex,
+    start,
+    end,
+    oldText,
+    newText: change.replacement,
+  });
 }
 
 /**
@@ -55,6 +88,7 @@ function resolveRange(
  * Target changes: 400 INVALID_PAYLOAD for an empty target, 422 TARGET_NOT_FOUND when there is
  * no occurrence, and 422 OCCURRENCE_OUT_OF_RANGE when there are fewer than requested.
  * Range changes: 422 RANGE_OUT_OF_BOUNDS and 422 EXPECTED_TEXT_MISMATCH.
+ * Either form: 422 SPLITS_CHARACTER when `start` or `end` falls inside a surrogate pair.
  */
 export function resolveChanges(text: string, changes: ReplaceChange[]): ResolvedChange[] {
   return changes.map((change, changeIndex) => {
@@ -78,12 +112,12 @@ export function resolveChanges(text: string, changes: ReplaceChange[]): Resolved
         { changeIndex, found: hit.found },
       );
     }
-    return {
+    return checkWholeCharacters(text, {
       changeIndex,
       start: hit.start,
       end: hit.start + needle.length,
       oldText: needle,
       newText: change.replacement,
-    };
+    });
   });
 }
