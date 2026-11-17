@@ -146,9 +146,11 @@ nothing is stored. Each change targets either
 
 With `dryRun=true` nothing is stored and `version` is unchanged; the redline has one hunk per
 change (`changeIndex`). `GET` and `PATCH` responses carry `ETag: "v<version>"`. Send
-`If-Match: "v<n>"` (also accepted: `*`, a comma list, or a weak `W/"v<n>"` compared
-leniently) to refuse the write with `412 VERSION_CONFLICT` if the document has moved on;
-without `If-Match` the write is unconditional. The UI always sends it.
+`If-Match: "v<n>"` (or `*`, or a comma list of quoted tags) to refuse the write with
+`412 VERSION_CONFLICT` if the document has moved on; without `If-Match` the write is
+unconditional. The UI always sends it. Comparison is strong (RFC 9110 §13.1.1): a weak
+`W/"v<n>"` never matches, and a value that is neither `*` nor quoted tags (`If-Match: v2`, or
+empty) is also a 412, whose `error` says the header is malformed.
 
 ```sh
 curl -sS -X PATCH 'localhost:8787/documents/e7f4d661-…?dryRun=true' -H 'content-type: application/json' \
@@ -266,7 +268,7 @@ Every non-2xx response has the same shape. `code` repeats the HTTP status and
 | 404    | `ROUTE_NOT_FOUND`         | No such route                                                                                            |
 | 422    | `TARGET_NOT_FOUND`        | `target.text` does not occur in the document (`details.changeIndex`)                                     |
 | 422    | `OCCURRENCE_OUT_OF_RANGE` | Fewer occurrences than requested (`details.found`)                                                       |
-| 412    | `VERSION_CONFLICT`        | `If-Match` does not match the current version (`details.currentVersion`)                                 |
+| 412    | `VERSION_CONFLICT`        | `If-Match` does not strongly match the current version, or is malformed (`details.currentVersion`)       |
 | 422    | `OVERLAPPING_CHANGES`     | Two changes overlap or start at the same offset                                                          |
 | 422    | `RANGE_OUT_OF_BOUNDS`     | A `range` change outside the document (`details.changeIndex`)                                            |
 | 422    | `EXPECTED_TEXT_MISMATCH`  | A `range` change whose `expectedText` differs (`details.changeIndex`)                                    |
