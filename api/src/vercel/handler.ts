@@ -7,7 +7,7 @@ import { getRequestListener } from "@hono/node-server";
 import { createApp } from "../app.js";
 import { log } from "../log.js";
 import { createRuntime } from "../runtime.js";
-import { version } from "../version.js";
+import { version } from "../config.js";
 
 const runtime = createRuntime();
 const app = createApp(runtime.deps);

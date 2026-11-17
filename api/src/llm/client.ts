@@ -4,7 +4,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { ZodType } from "zod";
-import { PATHS, llmMaxLiveCalls, llmMode, type LlmMode } from "../config.js";
+import { PATHS, anthropicApiKey, llmMaxLiveCalls, llmMode, type LlmMode } from "../config.js";
 import { elapsedMs, log } from "../log.js";
 import { appendLedger, costUsd, defaultLedgerPath, type LedgerEntry } from "./ledger.js";
 import { CassetteStore, cassetteKey, type Cassette } from "./replay.js";
@@ -55,10 +55,11 @@ export function jsonSchemaOf(schema: ZodType): Record<string, unknown> {
 export function createSdkTransport(): LlmTransport {
   let client: Anthropic | undefined;
   return async (req, { timeoutMs, schema }) => {
-    if (!process.env.ANTHROPIC_API_KEY) {
+    const apiKey = anthropicApiKey();
+    if (!apiKey) {
       throw new LlmUnavailable("no_api_key", "ANTHROPIC_API_KEY is not set");
     }
-    client ??= new Anthropic();
+    client ??= new Anthropic({ apiKey });
     try {
       // The 5.5 models think adaptively by default (omit `thinking`). Haiku 5.5 accepts
       // {type: "disabled"} at effort high or below; on Sonnet 5.5 it is a 400.

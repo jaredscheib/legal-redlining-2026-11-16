@@ -4,7 +4,7 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
-import { dataPath } from "./config.js";
+import { dataPath, logToFile, logToStdout } from "./config.js";
 
 type Value = string | number | boolean | null | undefined;
 export type LogFields = Record<string, Value | Value[] | Record<string, Value>>;
@@ -12,7 +12,7 @@ export type LogFields = Record<string, Value | Value[] | Record<string, Value>>;
 let fileReady: boolean | undefined;
 
 function appendToFile(line: string): void {
-  if (process.env.LOG_FILE === "off") return;
+  if (!logToFile()) return;
   try {
     if (fileReady === undefined) {
       fs.mkdirSync(dataPath(), { recursive: true });
@@ -39,7 +39,7 @@ export function withLogContext<T>(ctx: LogContext, fn: () => T): T {
 function write(level: "info" | "warn" | "error", event: string, fields: LogFields): void {
   const ctx = context.getStore();
   const line = JSON.stringify({ ts: new Date().toISOString(), level, event, ...ctx, ...fields });
-  if (process.env.LOG_STDOUT !== "off") process.stdout.write(line + "\n");
+  if (logToStdout()) process.stdout.write(line + "\n");
   if (fileReady !== false) appendToFile(line);
 }
 

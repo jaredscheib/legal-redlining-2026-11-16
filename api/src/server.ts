@@ -1,9 +1,8 @@
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.js";
-import { PORT } from "./config.js";
+import { PORT, version } from "./config.js";
 import { log } from "./log.js";
 import { createRuntime } from "./runtime.js";
-import { version } from "./version.js";
 
 const runtime = createRuntime();
 const app = createApp(runtime.deps);
