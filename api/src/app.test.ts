@@ -74,14 +74,16 @@ describe("documents", () => {
     expect(body.details.issues.length).toBeGreaterThan(0);
   });
 
-  it("400s malformed JSON", async () => {
+  it("400s malformed JSON and says so", async () => {
     const res = await app.request("/documents", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: "{not json",
     });
     expect(res.status).toBe(400);
-    expectError(await readJson(res), 400, "INVALID_PAYLOAD");
+    const body = await readJson(res);
+    expectError(body, 400, "INVALID_PAYLOAD");
+    expect(body.error).toBe("request body is not valid JSON");
   });
 });
 
@@ -139,6 +141,34 @@ describe("input validation", () => {
     const res = await app.request("/search?limit=0");
     expect(res.status).toBe(400);
     expectError(await readJson(res), 400, "INVALID_PAYLOAD");
+  });
+
+  it.each([
+    ["/search?q=rent&limit=0", "limit: must be at least 1"],
+    ["/search?limit=5", "q: is required"],
+  ])("GET %s says what is wrong: %s", async (url, error) => {
+    const body = await readJson(await app.request(url));
+    expect(body.error).toBe(error);
+    expect(body.details.issues.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    [{ title: "", text: "x" }, "title: must not be empty"],
+    [{ title: "T" }, "text: is required"],
+  ])("POST /documents %j says what is wrong: %s", async (payload, error) => {
+    const body = await readJson(await app.request("/documents", jsonInit("POST", payload)));
+    expect(body.error).toBe(error);
+  });
+
+  it("a suggestion's error names the field and the limit", async () => {
+    const res = await app.request(
+      "/documents/saas-msa/suggestions",
+      jsonInit("POST", { range: { start: 0, end: 10 }, instruction: "x".repeat(1001) }),
+    );
+    expect(res.status).toBe(400);
+    const body = await readJson(res);
+    expect(body.error).toBe("instruction: must be at most 1000 characters");
+    expect(body.details.issues[0]).toMatchObject({ code: "too_big", path: ["instruction"] });
   });
 
   it("POST /documents/:id/suggestions validates its range", async () => {
