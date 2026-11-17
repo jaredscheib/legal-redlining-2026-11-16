@@ -28,12 +28,14 @@ function parsePort(raw: string | undefined, fallback: number): number {
 export const PORT = parsePort(process.env.PORT, 8787);
 
 /**
- * The running build's git sha (GIT_SHA, set by the Makefile and baked in by the Vercel build),
- * or "dev". Reported by /healthz and the start log line.
+ * The running build: its git sha (GIT_SHA, set by the Makefile and baked in by the Vercel
+ * build) or "dev", prefixed by the release when a release deploy sets APP_RELEASE, as in
+ * "v0.1.0 (abc1234)". Reported by /healthz and the start log line.
  */
 export function version(): string {
-  const sha = process.env.GIT_SHA?.trim();
-  return sha ? sha : "dev";
+  const sha = process.env.GIT_SHA?.trim() || "dev";
+  const release = process.env.APP_RELEASE?.trim();
+  return release ? `${release} (${sha})` : sha;
 }
 
 /** The Anthropic API key, read on each live call so a process without one still serves replays. */

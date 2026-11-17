@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appWith, expectError, jsonInit, readJson } from "../test/http.js";
 import { InMemoryDocumentStore } from "./store/memory.js";
 import { seedStore } from "./store/seed.js";
@@ -19,6 +19,18 @@ describe("GET /healthz", () => {
     const body = await readJson(res);
     expect(body.status).toBe("ok");
     expect(typeof body.version).toBe("string");
+  });
+
+  it("prefixes the commit with the release when APP_RELEASE is set", async () => {
+    try {
+      vi.stubEnv("GIT_SHA", "abc1234");
+      vi.stubEnv("APP_RELEASE", "v0.1.0");
+      expect((await readJson(await app.request("/healthz"))).version).toBe("v0.1.0 (abc1234)");
+      vi.stubEnv("APP_RELEASE", "");
+      expect((await readJson(await app.request("/healthz"))).version).toBe("abc1234");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
