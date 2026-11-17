@@ -14,52 +14,29 @@ changes). One user, one process; state lives in memory.
 
 **Live:** <https://legal-redlining-2026-11-16.vercel.app>. The page footer and `GET /healthz` show the release and commit it runs.
 
-## Submission
+## Where things are
 
-Where to find each piece of the work.
-
-### Requirements
-
-| Requirement                                                                                                 | Where it is                                                                                                                           |
-| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Change requests: JSON naming the text to replace and the new text, one document, returning the updated text | [`PATCH /documents/:id`](#patch-documentsiddryruntrue) (engine in `api/src/changes/`)                                                 |
-| Search one or more documents for relevant snippets, returning their context                                 | [`GET /search`](#get-search) (BM25 passages with Claude synonym expansion; design in [Search](#search))                               |
-| Unit tests for the change and search logic, with large files or benchmarks                                  | `api/src/**/*.test.ts`; 10 MB+ tests in `api/test/*.large.test.ts`; `make bench`; coverage in [Testing and evals](#testing-and-evals) |
-| Sample requests                                                                                             | `samples/requests.sh` (one curl per endpoint) and the curls in the [API reference](#api-reference)                                    |
-| README with setup, usage, performance and API design rationale                                              | this file: [Setup](#setup), [Using the UI](#using-the-ui), [Performance](#performance), [API design rationale](#api-design-rationale) |
-
-### Optional items
-
-| Item                                                            | Where it is                                                                                                   |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| 4xx for client errors, 5xx with a JSON body                     | [Errors](#errors): one shape, `{error, code, details}`, with a stable `reason`                                |
-| Several changes in one request                                  | `changes[]`, up to 50 per request, all or nothing ([PATCH](#patch-documentsiddryruntrue))                     |
-| Large documents, near-linear search and replace                 | [Performance](#performance): measured on 10 MB+; reindexing runs in a worker thread                           |
-| Versioning or ETags to catch conflicting updates; repeated text | `ETag` and `If-Match` (412 on a stale write); targets by occurrence, or by range with an `expectedText` guard |
-| In-memory inverted index and its trade-offs                     | [Search](#search): options considered, how it works, known limits                                             |
-| Separate reads from writes; REST against action endpoints       | [API design rationale](#api-design-rationale)                                                                 |
-
-### How it was built
-
-- **Code and history:** this repository. Each pull request merged as a series of commits, one per change.
-- **Decisions and plan:** the framing issue [#16](../../issues/16) has the intent spec with the owner's choices, the MVP and Later lists, and the decision log. Each ticket issue cites its owner decision by date.
-- **Reviews:** the pull requests carry the agent-written reviews and how each finding was handled: fixed, declined with a reason, or filed as an issue.
-- **Roadmap:** the issues labelled [`Later`](../../issues?q=label%3ALater), and [What's next](#whats-next).
-- **Automation:**
-
-  | Automation                                | What it does                                                                 |
-  | ----------------------------------------- | ---------------------------------------------------------------------------- |
-  | `make check`                              | format, lint, typecheck and tests (the pre-commit hook runs the fast subset) |
-  | `make smoke`                              | starts the built API and runs the main flow over HTTP                        |
-  | `make coverage`                           | coverage per workspace                                                       |
-  | `make evals`                              | measures search ranking and the end-to-end suggestion flows                  |
-  | `make bench`                              | 10 MB index build time, query latency and heap                               |
-  | `make spend`                              | money spent on live model calls                                              |
-  | `make vercel-build`, `make vercel-verify` | build the deploy and check it locally                                        |
-  | `.github/workflows/ci.yml`                | `make check` on GitHub, started by hand once per merge                       |
-
-- **AI use:** Claude models wrote the code and the reviews under the owner's direction. The record above shows what the owner decided and what was delegated. The app itself uses Claude Haiku to expand search terms and Claude Sonnet to suggest edits; see [LLM usage and cost control](#llm-usage-and-cost-control).
-- **Decisions in one document:** [docs/decisions.md](docs/decisions.md).
+- **The API:** [reference](#api-reference) for every route with curl samples, the [error
+  catalogue](#errors), and the [design rationale](#api-design-rationale). Edits are
+  `PATCH /documents/:id`, applied all or nothing (up to 50 changes, by text and occurrence or
+  by range), previewed with `?dryRun=true`, and guarded by `ETag` and `If-Match`. Search is
+  `GET /search` over one, several or all documents.
+- **Search design:** the [options weighed](#options-considered), [how it works](#how-it-works)
+  (an in-memory BM25 passage index with Claude synonym expansion), and its
+  [known limits](#known-limits).
+- **Performance:** measured on 10 MB+ contracts in [Performance](#performance).
+- **Tests:** unit tests beside the code in `api/src` and `web/src`, 10 MB+ tests in `api/test`,
+  `make bench`, measured coverage, and evaluations of search ranking and the suggestion flow:
+  see [Testing and evals](#testing-and-evals).
+- **Sample requests:** `samples/requests.sh` runs one request per route against any base URL.
+- **Decisions:** [docs/decisions.md](docs/decisions.md) records each decision with the
+  alternatives weighed, how AI was used, and what comes next. The plan and its decision log are
+  in issue [#16](../../issues/16), each piece of work has its own issue, and the pull requests
+  carry the code reviews and what was done about each finding.
+- **Roadmap:** the issues labelled [`Later`](../../issues?q=label%3ALater), and
+  [What's next](#whats-next).
+- **Automation:** the [Make targets](#make-targets), a pre-commit hook, and a CI workflow
+  (`.github/workflows/ci.yml`, started by hand) that runs `make check`.
 
 ## Architecture at a glance
 
@@ -142,20 +119,20 @@ GIT_SHA=$(git rev-parse --short HEAD) PORT=8787 LLM_MODE=replay npm run start -w
 samples/requests.sh http://localhost:8787    # one sample request per endpoint
 ```
 
-| Variable                   | Default                        | Meaning                                                                          |
-| -------------------------- | ------------------------------ | -------------------------------------------------------------------------------- |
-| `PORT`                     | `8787`                         | API port (binds 127.0.0.1)                                                       |
-| `ANTHROPIC_API_KEY`        | unset                          | Enables live Claude calls                                                        |
-| `LLM_MODE`                 | `record`                       | `record`, `replay` or `live`; see below                                          |
-| `LLM_MAX_LIVE_CALLS`       | `200`                          | Live (billed) Claude calls per process; past it they are refused (`cap_reached`) |
-| `DATA_DIR`                 | `data/`                        | Logs, pids and evals output                                                      |
-| `LLM_LEDGER_PATH`          | `data/llm-ledger.jsonl`        | Spend ledger; the Makefile points it at the main checkout                        |
-| `LOG_STDOUT`               | on                             | `off` silences log lines on stdout                                               |
-| `LOG_FILE`                 | on                             | `off` stops writing `data/app.log`                                               |
-| `SEARCH_INDEX_WORKER`      | on                             | `off` rebuilds edited documents in process instead of in a worker thread         |
-| `GIT_SHA`                  | `dev`                          | Build commit shown by `/healthz` and the page; the Makefile sets it              |
-| `APP_RELEASE`              | unset                          | Release name set by a release deploy; the version then reads `v0.1.0 (abc1234)`  |
-| `SEED_DIR`, `FIXTURES_DIR` | `api/seed`, `api/fixtures/llm` | Seed contracts and recordings, for a bundled build                               |
+| Variable                   | Default                        | Meaning                                                                                 |
+| -------------------------- | ------------------------------ | --------------------------------------------------------------------------------------- |
+| `PORT`                     | `8787`                         | API port (binds 127.0.0.1)                                                              |
+| `ANTHROPIC_API_KEY`        | unset                          | Enables live Claude calls                                                               |
+| `LLM_MODE`                 | `record`                       | `record`, `replay` or `live`; see below                                                 |
+| `LLM_MAX_LIVE_CALLS`       | `200`                          | Live (billed) Claude calls per process; past it they are refused (`cap_reached`)        |
+| `DATA_DIR`                 | `data/`                        | Logs, pids and evals output                                                             |
+| `LLM_LEDGER_PATH`          | `data/llm-ledger.jsonl`        | Spend ledger; the Makefile points it at the main checkout                               |
+| `LOG_STDOUT`               | on                             | `off` silences log lines on stdout                                                      |
+| `LOG_FILE`                 | on                             | `off` stops writing `data/app.log`                                                      |
+| `SEARCH_INDEX_WORKER`      | on                             | `off` rebuilds edited documents in process instead of in a worker thread                |
+| `GIT_SHA`                  | `dev`                          | Build commit shown by `/healthz` and the page; the Makefile sets it                     |
+| `APP_RELEASE`              | unset                          | Release name baked in by `make vercel-build`; the version then reads `v0.1.0 (abc1234)` |
+| `SEED_DIR`, `FIXTURES_DIR` | `api/seed`, `api/fixtures/llm` | Seed contracts and recordings, for a bundled build                                      |
 
 ## Make targets
 
@@ -169,6 +146,9 @@ samples/requests.sh http://localhost:8787    # one sample request per endpoint
 | `evals`                            | Run `scenarios/` through the app; table + `data/evals/<timestamp>.json`             |
 | `spend`                            | Recorded LLM spend: live calls, tokens and cost from the ledger, plus replays       |
 | `bench`                            | Search on a 10 MB+ contract: index build ms, median query ms, heap used             |
+| `coverage`                         | Full test suites with coverage; a summary per workspace, HTML in `*/coverage/`      |
+| `compare-expansion`                | Live and billed (under $0.05): expansion latency and synonyms per model             |
+| `vercel-build` / `vercel-verify`   | Build the Vercel output, then serve it locally in replay mode and check it          |
 | `dev` / `dev-stop`                 | API on :8787 and Vite on :5173 in the background (pids and logs in `data/`)         |
 | `hooks`                            | Use `.githooks/` (pre-commit: format check, lint, fast tests)                       |
 | `tag V=x.y.z`                      | Annotated tag `vx.y.z` (not pushed)                                                 |
@@ -237,7 +217,7 @@ curl -sS -X POST localhost:8787/documents -H 'content-type: application/json' \
 ```
 
 The seed contracts have readable ids, `commercial-lease`, `employment-agreement`,
-`mutual-nda` and `saas-msa`, and the UI shows each document's id beside its title.
+`mutual-nda` and `saas-msa`, and the UI shows the open document's id in its header.
 
 ### `GET /documents/:id`
 
@@ -584,21 +564,21 @@ Logs are JSON lines on stdout and appended to `data/app.log`: `ts`, `level`, `ev
 fields. Every line written while handling a request carries its `reqId`, which is also returned
 as the `x-request-id` header (a safe incoming `x-request-id` is reused). They carry ids, counts and timings only, never document, passage or query text.
 
-| Event                                                              | Fields                                                                                                                                    |
-| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `server.start`                                                     | `version`, `port`, `docs` (seeded), `llmMode`                                                                                             |
-| `server.stop`                                                      | `signal`                                                                                                                                  |
-| `document.create`                                                  | `docId`, `length`                                                                                                                         |
-| `doc.patched`                                                      | `docId`, `version`, `changes`, `dryRun`, `ms`                                                                                             |
-| `http.request`                                                     | `reqId`, `method`, `route` (the pattern, never the raw path), `status`, `ms`                                                              |
-| `search.index`                                                     | `docId`, `version`, `reason` (`startup`, `create`, `commit`), `passages`, `ms`; for a commit also `mode` (`worker`, `sync`) and `queueMs` |
-| `search.index_swap`, `search.index_discard`, `search.index_failed` | `docId`, `version`: a rebuilt index swapped in, a late result dropped, a failed rebuild                                                   |
-| `search.index_worker_*`                                            | the worker failing to start, erroring, or a build falling back to in-process                                                              |
-| `search`                                                           | `reqId`, `qLen`, `terms`, `results`, `expansion` (status), `added`, `indexing`, `ms`                                                      |
-| `llm.call`                                                         | `op`, `model`, `inputTokens`, `outputTokens`, `ms`, `replayed`, `status`, `key`                                                           |
-| `http.unhandled`                                                   | `reqId` (also the `x-request-id` header), `method`, `route`, `errorName`                                                                  |
-| `llm.ledger_unwritable`, `llm.cassette_unwritable`                 | the spend ledger or a recording could not be written (read-only disk)                                                                     |
-| `function.start`                                                   | the Vercel function's cold start: `version`, `docs`, `llmMode`                                                                            |
+| Event                                                              | Fields                                                                                                                 |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `server.start`                                                     | `version`, `port`, `docs` (seeded), `llmMode`                                                                          |
+| `server.stop`                                                      | `signal`                                                                                                               |
+| `document.create`                                                  | `docId`, `length`                                                                                                      |
+| `doc.patched`                                                      | `docId`, `version`, `changes`, `dryRun`, `ms`                                                                          |
+| `http.request`                                                     | `reqId`, `method`, `route` (the pattern, never the raw path), `status`, `ms`                                           |
+| `search.index`                                                     | `docId`, `version`, `reason` (`startup`, `create`, `commit`), `passages`, `mode` (`worker` or `sync`), `queueMs`, `ms` |
+| `search.index_swap`, `search.index_discard`, `search.index_failed` | `docId`, `version`: a rebuilt index swapped in, a late result dropped, a failed rebuild                                |
+| `search.index_worker_*`                                            | the worker failing to start, erroring, or a build falling back to in-process                                           |
+| `search`                                                           | `reqId`, `qLen`, `terms`, `results`, `expansion` (status), `added`, `indexing`, `ms`                                   |
+| `llm.call`                                                         | `op`, `model`, `inputTokens`, `outputTokens`, `ms`, `replayed`, `status`, `key`                                        |
+| `http.unhandled`                                                   | `reqId` (also the `x-request-id` header), `method`, `route`, `errorName`                                               |
+| `llm.ledger_unwritable`, `llm.cassette_unwritable`                 | the spend ledger or a recording could not be written (read-only disk)                                                  |
+| `function.start`                                                   | the Vercel function's cold start: `version`, `docs`, `llmMode`                                                         |
 
 For example, `grep '"event":"llm.call"' data/app.log` shows every model call and whether it
 was replayed. `make dev` also writes `data/api.log` and `data/web.log`.
@@ -625,7 +605,8 @@ was replayed. `make dev` also writes `data/api.log` and `data/web.log`.
 - **`make coverage`** runs both workspaces' full suites (replay mode, large tests included)
   with v8 coverage over `src/` (tests excluded), prints a summary per workspace, and writes
   HTML and `coverage-summary.json` to `api/coverage/` and `web/coverage/` (git-ignored). It is
-  a measurement; no threshold gates `make check`. Measured at `5afbaf3`:
+  a measurement; no threshold gates `make check`. Measured at `5afbaf3` (the API figures vary
+  by a few tenths of a percent between runs):
 
   | Workspace | Lines  | Branches | Functions |
   | --------- | ------ | -------- | --------- |
@@ -637,7 +618,9 @@ was replayed. `make dev` also writes `data/api.log` and `data/web.log`.
 `make vercel-build` writes `.vercel/output/` (Build Output API v3): the web app as static
 files and the API bundled into one Node 22 function with the seed contracts and recordings.
 `make vercel-verify` serves that function locally on :8794 in replay mode and checks it. Then
-`vercel deploy --prebuilt --prod`. Set these in the Vercel project:
+`vercel deploy --prebuilt --prod`. A release build names itself with
+`APP_RELEASE=v0.1.0 make vercel-build`: the value is baked in at build time, so setting it in
+the Vercel project has no effect. Set these in the Vercel project:
 
 - `ANTHROPIC_API_KEY`
 - `LLM_MODE=record`: replay a recording first, call the API on a miss. The function's disk is
