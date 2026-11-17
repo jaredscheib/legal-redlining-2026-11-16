@@ -63,7 +63,7 @@ vercel-build: ## Write .vercel/output/ (static web app + bundled API function) f
 	./scripts/vercel-build.sh
 
 vercel-verify: ## Serve the built function on :8794 (replay, no key) and check the API and static app
-	env -u ANTHROPIC_API_KEY LLM_MODE=replay LOG_STDOUT=off node scripts/vercel-verify.mjs
+	env -u ANTHROPIC_API_KEY -u GIT_SHA LLM_MODE=replay LOG_STDOUT=off node scripts/vercel-verify.mjs
 
 dev: ## API on 8787 + Vite on 5173 in the background (override with API_PORT / WEB_PORT)
 	@./scripts/dev.sh start
