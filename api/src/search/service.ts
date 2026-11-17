@@ -16,7 +16,7 @@ import type {
   SearchService,
 } from "../domain/types.js";
 import { notFound } from "../errors.js";
-import { log } from "../log.js";
+import { elapsedMs, log } from "../log.js";
 import { SearchIndex, type IndexedDoc, type ScoredPassage, type WeightedTerm } from "./index.js";
 import { createIndexer, type IndexMode, type Indexer } from "./indexer.js";
 import { parseQuery, phraseRegExp } from "./query.js";
@@ -61,7 +61,7 @@ export function createSearchService(opts: {
     log.info("search.index_swap", {
       docId: doc.id,
       version: doc.version,
-      ms: Math.round((performance.now() - t0) * 10) / 10,
+      ms: elapsedMs(t0),
     });
     return entry;
   };
@@ -79,7 +79,7 @@ export function createSearchService(opts: {
       mode: "sync",
       passages: entry.passages.length,
       queueMs: 0,
-      ms: Math.round(performance.now() - t0),
+      ms: elapsedMs(t0),
     });
   };
 
@@ -257,7 +257,7 @@ export function createSearchService(opts: {
       expansion: expansion.status,
       added: added.length,
       indexing: indexing.length,
-      ms: Math.round((performance.now() - t0) * 10) / 10,
+      ms: elapsedMs(t0),
     });
     return {
       query: query.q,

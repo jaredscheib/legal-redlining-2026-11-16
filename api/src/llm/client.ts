@@ -5,7 +5,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { ZodType } from "zod";
 import { PATHS, llmMaxLiveCalls, llmMode, type LlmMode } from "../config.js";
-import { log } from "../log.js";
+import { elapsedMs, log } from "../log.js";
 import { appendLedger, costUsd, defaultLedgerPath, type LedgerEntry } from "./ledger.js";
 import { CassetteStore, cassetteKey, type Cassette } from "./replay.js";
 import {
@@ -172,7 +172,7 @@ export function createLlmClient(opts: LlmClientOptions = {}): LlmClient {
         model: input.model,
         inputTokens: usage?.inputTokens ?? 0,
         outputTokens: usage?.outputTokens ?? 0,
-        ms: Math.round(performance.now() - started),
+        ms: elapsedMs(started),
         replayed,
         status,
         key: key.slice(0, 12),
