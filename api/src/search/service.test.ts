@@ -325,15 +325,19 @@ describe("mergeSpans", () => {
 /** An indexer whose builds finish only when the test says so, in any order. */
 function manualIndexer() {
   const sync = createSyncIndexer();
-  const calls: { version: number; finish: () => Promise<void> }[] = [];
+  const calls: { version: number; finish: () => Promise<void>; fail: () => Promise<void> }[] = [];
   const indexer: Indexer = {
     mode: "worker",
     build: (doc) =>
-      new Promise<BuiltSegment>((resolve) => {
+      new Promise<BuiltSegment>((resolve, reject) => {
         calls.push({
           version: doc.version,
           finish: async () => {
             resolve({ ...(await sync.build(doc)), mode: "worker" });
+            await new Promise((r) => setImmediate(r));
+          },
+          fail: async () => {
+            reject(new TypeError("boom"));
             await new Promise((r) => setImmediate(r));
           },
         });
@@ -494,5 +498,29 @@ describe("consistency while reindexing", () => {
     // Clients would otherwise poll forever; the hit still says it is stale.
     expect(res.indexing).toHaveLength(0);
     expect(res.results[0]?.stale).toBe(true);
+  });
+
+  it("v2's build failing while v3's is pending records v2, and v3 is still reported as indexing", async () => {
+    const { indexer, started } = manualIndexer();
+    const { store, search } = setup(docs, undefined, { indexer });
+    const { events } = await captureLogs(async () => {
+      store.commit("lease", "Rent quarterly.", []);
+      await started();
+      store.commit("lease", "Rent yearly.", []);
+      const calls = await started();
+      expect(calls.map((c) => c.version)).toEqual([2, 3]);
+      await calls[0]?.fail();
+    });
+    expect(events.find((e) => e.event === "search.index_failed")).toMatchObject({
+      docId: "lease",
+      version: 2,
+    });
+    expect((await search.search(q("rent"))).indexing).toEqual([
+      { docId: "lease", title: "LEASE", indexedVersion: 1, currentVersion: 3 },
+    ]);
+    const calls = await started();
+    await calls[1]?.finish();
+    await search.idle();
+    expect((await search.search(q("yearly"))).indexing).toEqual([]);
   });
 });

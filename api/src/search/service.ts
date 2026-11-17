@@ -99,11 +99,14 @@ export function createSearchService(opts: {
     if (queued.has(id)) return;
     queued.add(id);
     const scheduledAt = performance.now();
+    /** The version this job builds, read when it starts; a failure is recorded against it. */
+    let building: number | undefined;
     const job = new Promise<void>((resolve) => setImmediate(resolve))
       .then(async () => {
         queued.delete(id);
         const doc = store.get(id);
         if (!doc) return;
+        building = doc.version;
         const built = await indexer.build(doc);
         const arrived = performance.now();
         const entry = swapIn(doc, built.segment);
@@ -119,13 +122,13 @@ export function createSearchService(opts: {
         });
       })
       .catch((err: unknown) => {
-        // Stop reporting this version as "indexing" (clients would poll forever); its hits
-        // stay marked stale until a later commit indexes successfully.
-        const version = store.get(id)?.version;
-        if (version !== undefined) failed.set(id, version);
+        // Stop reporting the failed version as "indexing" (clients would poll forever); its
+        // hits stay marked stale until a later commit indexes successfully. A newer version
+        // whose job is still pending keeps being reported.
+        if (building !== undefined) failed.set(id, building);
         log.error("search.index_failed", {
           docId: id,
-          version,
+          version: building,
           reason: err instanceof Error ? err.name : "unknown",
         });
       })
