@@ -1,6 +1,6 @@
 # Decisions
 
-This document covers how the redlining service was designed and built: each decision with the alternatives weighed, how AI was used, and what comes next. The plan, the decision log and every ticket are in the GitHub issues. The planning issue is [#16](https://github.com/jaredscheib/legal-redlining-2026-11-16/issues/16), and the work landed in pull request [#19](https://github.com/jaredscheib/legal-redlining-2026-11-16/pull/19). For the layout of the code, see [Architecture at a glance](../README.md#architecture-at-a-glance) in the README.
+This document covers how the redlining service was designed and built: each decision with the alternatives weighed, how AI was used, and what comes next. The plan, the decision log and each piece of work are in the GitHub issues. The plan is issue [#16](https://github.com/jaredscheib/legal-redlining-2026-11-16/issues/16), and the code and its reviews are in pull request [#19](https://github.com/jaredscheib/legal-redlining-2026-11-16/pull/19). For the layout of the code, see [Architecture at a glance](../README.md#architecture-at-a-glance) in the README.
 
 ## Implementation and API design
 
@@ -30,10 +30,10 @@ A lawyer searches every contract, or a chosen set, for a clause, with synonyms o
 
 ## How AI was used
 
-AI wrote the code under my direction. I set the goals, made the decisions, and checked the results.
+Claude wrote the code and the reviews under my direction. I set the goals, made the decisions, and checked the results.
 
-- **The start.** I began with a short framing: lawyers as the users, search for clauses by snippet across many documents, an edit to one specific passage (written by hand first, with a Claude suggestion as a nice-to-have), and the redline shown inline. From that, the agent ran a structured intake. I chose among the options it laid out: the data model, the UI principles, how documents enter the store, and how the redline looks.
-- **The plan was tested before anything was built.** Two independent reviewer agents read it: one for scope and simplicity, one for whether it could be built as written. I then re-scoped it:
+- **The start.** I began with a short framing: lawyers as the users, search for clauses by snippet across many documents, an edit to one specific passage (written by hand first, with a Claude suggestion as a nice-to-have), and the redline shown inline. Claude then asked me a set of questions with options, and I chose the data model, the UI principles, how documents enter the store, and how the redline looks.
+- **The plan was tested before anything was built.** Two separate Claude sessions that had not seen our discussion read it: one for scope and simplicity, one for whether it could be built as written. I then re-scoped it:
   - Sonnet rather than Opus
   - the optional API items held until the basic flow worked
   - spend tracked against the account's limit, with recordings so no call is paid for twice
@@ -43,25 +43,25 @@ AI wrote the code under my direction. I set the goals, made the decisions, and c
   - expansion latency, which led to Haiku and the two-phase search
   - observability, which led to request ids everywhere
   - whether the model should return spans (it doesn't)
-  - concurrency and ETags, which led to the per-firm policy in #37
-- **Parallel work.** I asked what could run at the same time. Builder agents each worked one ticket in their own git worktree, up to three at once, and a fresh reviewer agent reviewed every ticket before it merged.
-- **Validation by use.** I used the app after the first UI landed and again at the end, including a conflict test with curl. My feedback became a ticket of its own (#32), and later I approved the optional API items (#33).
+  - concurrency and ETags, which led to the per-firm policy in [#37](https://github.com/jaredscheib/legal-redlining-2026-11-16/issues/37)
+- **Parallel work.** I asked what could run at the same time. Up to three Claude sessions each built one piece of work in its own copy of the repository. Another session that had not seen the work reviewed each piece before it was merged.
+- **Validation by use.** I used the app after the first UI landed, and walked through the local build, including a conflict test with curl. My feedback became its own piece of work ([#32](https://github.com/jaredscheib/legal-redlining-2026-11-16/issues/32)), and I then approved the optional API items ([#33](https://github.com/jaredscheib/legal-redlining-2026-11-16/issues/33)).
 - **Reviews on request.** I asked for:
-  - a refactoring review: five items were done (#35) and eight deferred (#27)
+  - a refactoring review: five items were done ([#35](https://github.com/jaredscheib/legal-redlining-2026-11-16/issues/35)) and eight deferred ([#27](https://github.com/jaredscheib/legal-redlining-2026-11-16/issues/27))
   - a final review focused on the API, with no time limit, run as a client would run it
 
-  From the findings of the final review, I chose which fixes landed before the merge (#36 holds the rest).
+  From the findings of the final review, I chose which fixes landed before the merge ([#36](https://github.com/jaredscheib/legal-redlining-2026-11-16/issues/36) holds the rest).
 
 - **Counts.**
 
-  | What                                                           | Count                                                                                              |
-  | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-  | Tickets built                                                  | 12, plus the final review's fixes                                                                  |
-  | Ticket review rounds that led to fixes                         | 5                                                                                                  |
-  | Ticket review findings                                         | 5 high (all blocking, all in the first docs draft, fixed before merge), 8 medium, 15 low, 13 minor |
-  | Whole-branch reviews                                           | 2                                                                                                  |
-  | My corrections of the agents' work or process                  | 9                                                                                                  |
-  | Model spend for development, evaluations and production checks | under $0.10, recorded in the spend ledger                                                          |
+  | What                                        | Count                                                                                       |
+  | ------------------------------------------- | ------------------------------------------------------------------------------------------- |
+  | Pieces of work, each with its own issue     | 12, plus the fixes from the final reviews                                                   |
+  | Reviews whose findings needed a second look | 5                                                                                           |
+  | Review findings on individual pieces        | 5 high (all in the first draft of the docs, fixed before merge), 8 medium, 15 low, 13 minor |
+  | Reviews of the whole change                 | 4                                                                                           |
+  | Times I corrected the work or the process   | 9                                                                                           |
+  | Model spend in development and evaluations  | about $0.07; production calls are capped per instance and not in that record                |
 
 ## Harder than expected
 
