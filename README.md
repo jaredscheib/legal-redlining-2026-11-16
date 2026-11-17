@@ -56,15 +56,16 @@ PORT=8787 LLM_MODE=replay npm run start -w api
 samples/requests.sh http://localhost:8787    # one sample request per endpoint
 ```
 
-| Variable            | Default                 | Meaning                                                   |
-| ------------------- | ----------------------- | --------------------------------------------------------- |
-| `PORT`              | `8787`                  | API port (binds 127.0.0.1)                                |
-| `ANTHROPIC_API_KEY` | unset                   | Enables live Claude calls                                 |
-| `LLM_MODE`          | `record`                | `record`, `replay` or `live`; see below                   |
-| `DATA_DIR`          | `data/`                 | Logs, pids and evals output                               |
-| `LLM_LEDGER_PATH`   | `data/llm-ledger.jsonl` | Spend ledger; the Makefile points it at the main checkout |
-| `LOG_STDOUT`        | on                      | `off` silences log lines on stdout                        |
-| `LOG_FILE`          | on                      | `off` stops writing `data/app.log`                        |
+| Variable             | Default                 | Meaning                                                                          |
+| -------------------- | ----------------------- | -------------------------------------------------------------------------------- |
+| `PORT`               | `8787`                  | API port (binds 127.0.0.1)                                                       |
+| `ANTHROPIC_API_KEY`  | unset                   | Enables live Claude calls                                                        |
+| `LLM_MODE`           | `record`                | `record`, `replay` or `live`; see below                                          |
+| `LLM_MAX_LIVE_CALLS` | `200`                   | Live (billed) Claude calls per process; past it they are refused (`cap_reached`) |
+| `DATA_DIR`           | `data/`                 | Logs, pids and evals output                                                      |
+| `LLM_LEDGER_PATH`    | `data/llm-ledger.jsonl` | Spend ledger; the Makefile points it at the main checkout                        |
+| `LOG_STDOUT`         | on                      | `off` silences log lines on stdout                                               |
+| `LOG_FILE`           | on                      | `off` stops writing `data/app.log`                                               |
 
 ## Make targets
 
@@ -506,7 +507,7 @@ files and the API bundled into one Node 22 function with the seed contracts and 
 
 - `ANTHROPIC_API_KEY`
 - `LLM_MODE=record`: replay a recording first, call the API on a miss (nothing is saved)
-- `LLM_MAX_LIVE_CALLS=200`: live calls per instance before suggestions return 503
+- `LLM_MAX_LIVE_CALLS` (default 200): live calls per instance before suggestions return 503
 
 Documents live in memory per instance and reset on a cold start. Vercel rejects request
 bodies over 4.5 MB.

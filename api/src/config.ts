@@ -37,13 +37,16 @@ export function llmMode(): LlmMode {
   return parseLlmMode(process.env.LLM_MODE);
 }
 
+/** Live calls one process may make when LLM_MAX_LIVE_CALLS is unset. */
+export const LLM_MAX_LIVE_CALLS_DEFAULT = 200;
+
 /**
  * Live (billed) calls one process may make before the client refuses with `cap_reached`.
- * Unset means unlimited. Read lazily, like llmMode().
+ * LLM_MAX_LIVE_CALLS overrides LLM_MAX_LIVE_CALLS_DEFAULT. Read lazily, like llmMode().
  */
 export function llmMaxLiveCalls(): number {
   const raw = process.env.LLM_MAX_LIVE_CALLS;
-  if (raw === undefined || raw === "") return Infinity;
+  if (raw === undefined || raw === "") return LLM_MAX_LIVE_CALLS_DEFAULT;
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 0) throw new Error("LLM_MAX_LIVE_CALLS must be an integer >= 0");
   return n;

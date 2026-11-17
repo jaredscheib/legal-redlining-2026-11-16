@@ -53,11 +53,15 @@ afterEach(() => {
 });
 
 describe("LLM_MAX_LIVE_CALLS", () => {
-  it("defaults to unlimited and rejects junk", () => {
-    vi.stubEnv("LLM_MAX_LIVE_CALLS", "");
-    expect(llmMaxLiveCalls()).toBe(Infinity);
-    vi.stubEnv("LLM_MAX_LIVE_CALLS", "200");
+  it("defaults to 200 when unset, is overridden by the env var, and rejects junk", () => {
+    vi.stubEnv("LLM_MAX_LIVE_CALLS", undefined);
     expect(llmMaxLiveCalls()).toBe(200);
+    vi.stubEnv("LLM_MAX_LIVE_CALLS", "");
+    expect(llmMaxLiveCalls()).toBe(200);
+    vi.stubEnv("LLM_MAX_LIVE_CALLS", "5");
+    expect(llmMaxLiveCalls()).toBe(5);
+    vi.stubEnv("LLM_MAX_LIVE_CALLS", "0");
+    expect(llmMaxLiveCalls()).toBe(0);
     vi.stubEnv("LLM_MAX_LIVE_CALLS", "-1");
     expect(() => llmMaxLiveCalls()).toThrow();
     vi.stubEnv("LLM_MAX_LIVE_CALLS", "lots");
