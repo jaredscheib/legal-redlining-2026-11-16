@@ -5,7 +5,8 @@ import type { Registrar } from "./deps.js";
 const toArray = (v: string | string[] | undefined) =>
   v === undefined ? undefined : Array.isArray(v) ? v : [v];
 
-export const SearchQuerySchema = z.object({
+/** Strict: an unknown parameter is a 400. `docId` arrives as a string, or an array if repeated. */
+export const SearchQuerySchema = z.strictObject({
   q: z.string().trim().min(1).max(500),
   docId: z.union([z.string().min(1), z.array(z.string().min(1))]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(10),

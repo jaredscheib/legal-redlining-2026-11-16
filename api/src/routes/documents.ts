@@ -6,46 +6,53 @@ import { MAX_CHANGES_PER_REQUEST } from "../config.js";
 import { notFound } from "../errors.js";
 import { elapsedMs, log } from "../log.js";
 import { validate } from "../validation.js";
-import type { ChangeOp, DocumentStore, PatchDocumentResponse } from "../domain/types.js";
+import type {
+  ChangeOp,
+  DocumentStore,
+  PatchDocumentResponse,
+  ReplaceChange,
+} from "../domain/types.js";
 import type { Registrar } from "./deps.js";
 import { checkIfMatch, etagFor } from "./etag.js";
 
-const CreateDocumentBody = z.object({
+// Every request schema is strict: an unknown key (say a misspelled `occurence`) is a 400, never
+// silently dropped.
+const CreateDocumentBody = z.strictObject({
   title: z.string().trim().min(1).max(500),
   text: z.string().min(1),
 });
 
-// Exactly one of `target` or `range`: each branch forbids the other's key.
-const TargetChange = z.object({
-  operation: z.literal("replace"),
-  target: z.object({
-    text: z.string().min(1),
-    occurrence: z.number().int().min(1).optional(),
-  }),
-  range: z.never().optional(),
-  replacement: z.string(),
+const Target = z.strictObject({
+  text: z.string().min(1),
+  occurrence: z.number().int().min(1).optional(),
 });
 
 // Bounds are checked against the document (422 RANGE_OUT_OF_BOUNDS), not here.
-const RangeChange = z.object({
-  operation: z.literal("replace"),
-  range: z.object({
-    start: z.number().int(),
-    end: z.number().int(),
-    expectedText: z.string().optional(),
-  }),
-  target: z.never().optional(),
-  replacement: z.string(),
+const Range = z.strictObject({
+  start: z.number().int(),
+  end: z.number().int(),
+  expectedText: z.string().optional(),
 });
 
-const PatchDocumentBody = z.object({
-  changes: z
-    .array(z.union([TargetChange, RangeChange]))
-    .min(1)
-    .max(MAX_CHANGES_PER_REQUEST),
+// One object rather than a union of the two forms, so a bad key or value inside either form
+// is reported at its own path instead of as "matches no branch".
+const Change = z
+  .strictObject({
+    operation: z.literal("replace"),
+    target: Target.optional(),
+    range: Range.optional(),
+    replacement: z.string(),
+  })
+  .refine((c) => (c.target === undefined) !== (c.range === undefined), {
+    message: 'must have exactly one of "target" or "range"',
+  })
+  .transform((c) => c as ReplaceChange);
+
+const PatchDocumentBody = z.strictObject({
+  changes: z.array(Change).min(1).max(MAX_CHANGES_PER_REQUEST),
 });
 
-const PatchQuery = z.object({
+const PatchQuery = z.strictObject({
   dryRun: z.enum(["true", "false"]).optional(),
 });
 
@@ -74,8 +81,9 @@ export const registerDocumentRoutes: Registrar = (app, { store }) => {
   // Synchronous from read to commit, so no other request can interleave.
   app.patch(
     "/documents/:id",
-    validate("query", PatchQuery),
+    // The body first, so an unsupported media type is a 415 before anything else.
     validate("json", PatchDocumentBody),
+    validate("query", PatchQuery),
     (c) => {
       const started = performance.now();
       const doc = requireDocument(store, c.req.param("id"));
