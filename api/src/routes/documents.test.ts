@@ -196,10 +196,23 @@ describe("ETag and If-Match", () => {
     expect(applied.headers.get("ETag")).toBe('"v2"');
   });
 
-  it.each(['"v1"', 'W/"v1"', "*", '"v7", "v1"'])("applies with If-Match %s", async (ifMatch) => {
+  it.each(['"v1"', "*", '"v7", "v1"'])("applies with If-Match %s", async (ifMatch) => {
     const res = await patch("/documents/doc", swap(), { "If-Match": ifMatch });
     expect(res.status).toBe(200);
     expect(store.get("doc")?.version).toBe(2);
+  });
+
+  it.each([
+    ['W/"v1"', "strong comparison"],
+    ["v1", "must be * or quoted ETags"],
+    ["", "must be * or quoted ETags"],
+  ])("412s If-Match %j and says why, changing nothing", async (ifMatch, says) => {
+    const res = await patch("/documents/doc", swap(), { "If-Match": ifMatch });
+    expect(res.status).toBe(412);
+    const body = await readJson(res);
+    expect(body.details).toEqual({ reason: "VERSION_CONFLICT", currentVersion: 1 });
+    expect(body.error).toContain(says);
+    expect(store.get("doc")?.version).toBe(1);
   });
 
   it.each(["true", "false"])(
