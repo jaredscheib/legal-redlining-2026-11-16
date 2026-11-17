@@ -12,6 +12,92 @@ passage index, plus a React UI. Four synthetic contracts are loaded at startup.
 from text offsets back to the source (and, for .docx, writes redlines back as tracked
 changes). One user, one process; state lives in memory.
 
+**Live:** <https://legal-redlining-2026-11-16.vercel.app>. The page footer and `GET /healthz` show the release and commit it runs.
+
+## Submission
+
+Where to find each piece of the work.
+
+### Requirements
+
+| Requirement                                                                                                 | Where it is                                                                                                                           |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Change requests: JSON naming the text to replace and the new text, one document, returning the updated text | [`PATCH /documents/:id`](#patch-documentsiddryruntrue) (engine in `api/src/changes/`)                                                 |
+| Search one or more documents for relevant snippets, returning their context                                 | [`GET /search`](#get-search) (BM25 passages with Claude synonym expansion; design in [Search](#search))                               |
+| Unit tests for the change and search logic, with large files or benchmarks                                  | `api/src/**/*.test.ts`; 10 MB+ tests in `api/test/*.large.test.ts`; `make bench`; coverage in [Testing and evals](#testing-and-evals) |
+| Sample requests                                                                                             | `samples/requests.sh` (one curl per endpoint) and the curls in the [API reference](#api-reference)                                    |
+| README with setup, usage, performance and API design rationale                                              | this file: [Setup](#setup), [Using the UI](#using-the-ui), [Performance](#performance), [API design rationale](#api-design-rationale) |
+
+### Optional items
+
+| Item                                                            | Where it is                                                                                                   |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 4xx for client errors, 5xx with a JSON body                     | [Errors](#errors): one shape, `{error, code, details}`, with a stable `reason`                                |
+| Several changes in one request                                  | `changes[]`, up to 50 per request, all or nothing ([PATCH](#patch-documentsiddryruntrue))                     |
+| Large documents, near-linear search and replace                 | [Performance](#performance): measured on 10 MB+; reindexing runs in a worker thread                           |
+| Versioning or ETags to catch conflicting updates; repeated text | `ETag` and `If-Match` (412 on a stale write); targets by occurrence, or by range with an `expectedText` guard |
+| In-memory inverted index and its trade-offs                     | [Search](#search): options considered, how it works, known limits                                             |
+| Separate reads from writes; REST against action endpoints       | [API design rationale](#api-design-rationale)                                                                 |
+
+### How it was built
+
+- **Code and history:** this repository. Each pull request merged as a series of commits, one per change.
+- **Decisions and plan:** the framing issue [#16](../../issues/16) has the intent spec with the owner's choices, the MVP and Later lists, and the decision log. Each ticket issue cites its owner decision by date.
+- **Reviews:** the pull requests carry the agent-written reviews and how each finding was handled: fixed, declined with a reason, or filed as an issue.
+- **Roadmap:** the issues labelled [`Later`](../../issues?q=label%3ALater), and [What's next](#whats-next).
+- **Automation:**
+
+  | Automation                                | What it does                                                                 |
+  | ----------------------------------------- | ---------------------------------------------------------------------------- |
+  | `make check`                              | format, lint, typecheck and tests (the pre-commit hook runs the fast subset) |
+  | `make smoke`                              | starts the built API and runs the main flow over HTTP                        |
+  | `make coverage`                           | coverage per workspace                                                       |
+  | `make evals`                              | measures search ranking and the end-to-end suggestion flows                  |
+  | `make bench`                              | 10 MB index build time, query latency and heap                               |
+  | `make spend`                              | money spent on live model calls                                              |
+  | `make vercel-build`, `make vercel-verify` | build the deploy and check it locally                                        |
+  | `.github/workflows/ci.yml`                | `make check` on GitHub, started by hand once per merge                       |
+
+- **AI use:** Claude models wrote the code and the reviews under the owner's direction. The record above shows what the owner decided and what was delegated. The app itself uses Claude Haiku to expand search terms and Claude Sonnet to suggest edits; see [LLM usage and cost control](#llm-usage-and-cost-control).
+- **Decisions in one document:** [docs/decisions.md](docs/decisions.md).
+
+## Architecture at a glance
+
+| Decision                                                                                                                                | Where                               |
+| --------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| A REST API over plain JSON, with each route a small registrar over injected dependencies (`createApp(deps)`)                            | `api/src/app.ts`, `api/src/routes/` |
+| Edits are change operations resolved against the original text, applied in one pass, and returned as a word-level redline               | `api/src/changes/`                  |
+| A document is its current text, a version and a log of the operations that produced it                                                  | `api/src/store/`                    |
+| Search is an in-memory BM25 passage index, rebuilt in a worker thread after an edit while search keeps answering                        | `api/src/search/`                   |
+| Claude sits behind one client with record/replay, a spend ledger and a live-call cap: Haiku expands search terms, Sonnet suggests edits | `api/src/llm/`                      |
+| Every tunable and environment variable has one home                                                                                     | `api/src/config.ts`                 |
+| One small React page for the lawyer's flow, with typed calls to the API                                                                 | `web/src/`                          |
+
+```
+api/src/
+  app.ts, server.ts      createApp(deps) and the Node entry point
+  runtime.ts             the production dependency graph, shared by the server, evals and Vercel
+  config.ts              every tunable and environment variable
+  routes/                documents, search, suggestions; ETag and If-Match
+  changes/               resolve targets, apply operations, word-level redline
+  search/                passages, tokenizer, query parser, BM25 index, index worker, search service
+  store/                 in-memory document store and seed loader
+  llm/                   Claude client, expansion, suggestions, record/replay, spend ledger
+  vercel/                the serverless function's entry point
+  evals/                 scenario runner
+  domain/types.ts        shared types
+api/seed/                four synthetic contracts (NDA, SaaS MSA, lease, employment)
+api/fixtures/llm/        recorded model responses
+api/scripts/             evals, spend, bench and model-comparison entry points
+api/test/                large-file (10 MB+) tests and test helpers
+web/src/                 App, components (search, results, document, edit panel, redline), API client
+scenarios/               labelled search queries and end-to-end flows for make evals
+samples/requests.sh      a curl sample for every endpoint
+scripts/                 dev, smoke, with-keychain, vercel-build, vercel-verify
+docs/decisions.md        decisions with the alternatives weighed, AI use, what comes next
+data/                    logs, pids, spend ledger, evals output (git-ignored)
+```
+
 ## Using the UI
 
 Start everything with `make dev`, then open <http://localhost:5173>.
@@ -52,20 +138,24 @@ To run the built API without `make dev`:
 
 ```sh
 npm run build -w api
-PORT=8787 LLM_MODE=replay npm run start -w api
+GIT_SHA=$(git rev-parse --short HEAD) PORT=8787 LLM_MODE=replay npm run start -w api
 samples/requests.sh http://localhost:8787    # one sample request per endpoint
 ```
 
-| Variable             | Default                 | Meaning                                                                          |
-| -------------------- | ----------------------- | -------------------------------------------------------------------------------- |
-| `PORT`               | `8787`                  | API port (binds 127.0.0.1)                                                       |
-| `ANTHROPIC_API_KEY`  | unset                   | Enables live Claude calls                                                        |
-| `LLM_MODE`           | `record`                | `record`, `replay` or `live`; see below                                          |
-| `LLM_MAX_LIVE_CALLS` | `200`                   | Live (billed) Claude calls per process; past it they are refused (`cap_reached`) |
-| `DATA_DIR`           | `data/`                 | Logs, pids and evals output                                                      |
-| `LLM_LEDGER_PATH`    | `data/llm-ledger.jsonl` | Spend ledger; the Makefile points it at the main checkout                        |
-| `LOG_STDOUT`         | on                      | `off` silences log lines on stdout                                               |
-| `LOG_FILE`           | on                      | `off` stops writing `data/app.log`                                               |
+| Variable                   | Default                        | Meaning                                                                          |
+| -------------------------- | ------------------------------ | -------------------------------------------------------------------------------- |
+| `PORT`                     | `8787`                         | API port (binds 127.0.0.1)                                                       |
+| `ANTHROPIC_API_KEY`        | unset                          | Enables live Claude calls                                                        |
+| `LLM_MODE`                 | `record`                       | `record`, `replay` or `live`; see below                                          |
+| `LLM_MAX_LIVE_CALLS`       | `200`                          | Live (billed) Claude calls per process; past it they are refused (`cap_reached`) |
+| `DATA_DIR`                 | `data/`                        | Logs, pids and evals output                                                      |
+| `LLM_LEDGER_PATH`          | `data/llm-ledger.jsonl`        | Spend ledger; the Makefile points it at the main checkout                        |
+| `LOG_STDOUT`               | on                             | `off` silences log lines on stdout                                               |
+| `LOG_FILE`                 | on                             | `off` stops writing `data/app.log`                                               |
+| `SEARCH_INDEX_WORKER`      | on                             | `off` rebuilds edited documents in process instead of in a worker thread         |
+| `GIT_SHA`                  | `dev`                          | Build commit shown by `/healthz` and the page; the Makefile sets it              |
+| `APP_RELEASE`              | unset                          | Release name set by a release deploy; the version then reads `v0.1.0 (abc1234)`  |
+| `SEED_DIR`, `FIXTURES_DIR` | `api/seed`, `api/fixtures/llm` | Seed contracts and recordings, for a bundled build                               |
 
 ## Make targets
 
@@ -138,8 +228,16 @@ curl -sS -X POST localhost:8787/documents -H 'content-type: application/json' \
 ```
 
 ```json
-{ "id": "e7f4d661-…", "title": "Sample Services Agreement", "text": "1. Fees. …", "version": 1 }
+{
+  "id": "2e9c4074-1ec9-430a-9022-bc43c068e9d3",
+  "title": "Sample Services Agreement",
+  "text": "1. Fees. …",
+  "version": 1
+}
 ```
+
+The seed contracts have readable ids, `commercial-lease`, `employment-agreement`,
+`mutual-nda` and `saas-msa`, and the UI shows each document's id beside its title.
 
 ### `GET /documents/:id`
 
@@ -165,23 +263,23 @@ unconditional. The UI always sends it. Comparison is strong (RFC 9110 §13.1.1):
 empty) is also a 412, whose `error` says the header is malformed.
 
 ```sh
-curl -sS -X PATCH 'localhost:8787/documents/e7f4d661-…?dryRun=true' -H 'content-type: application/json' \
+curl -sS -X PATCH 'localhost:8787/documents/saas-msa?dryRun=true' -H 'content-type: application/json' \
   -d '{"changes":[{"operation":"replace","target":{"text":"thirty (30) days"},"replacement":"fifteen (15) days"}]}'
 ```
 
 ```json
 {
-  "id": "e7f4d661-…",
+  "id": "saas-msa",
   "version": 1,
   "dryRun": true,
-  "text": "1. Fees. Client shall pay all invoices within fifteen (15) days of receipt. …",
+  "text": "SaaS Master Services Agreement\n\nThis Master Services Agreement …",
   "redline": [
     {
       "changeIndex": 0,
-      "start": 46,
-      "end": 62,
-      "before": "1. Fees. Client shall pay all invoices within ",
-      "after": " of receipt. …",
+      "start": 2007,
+      "end": 2023,
+      "before": "in each Order Form. Fees are invoiced annually in\nadvance and are due within ",
+      "after": " of the invoice date.\n4.2 Overdue amounts accrue interest at the lesser of one",
       "segments": [
         { "type": "delete", "text": "thirty" },
         { "type": "insert", "text": "fifteen" },
@@ -210,7 +308,7 @@ up to 80 characters of unchanged context, trimmed to whole words.
 | `expand`  | `true`  | `false` never asks Claude for synonyms                      |
 
 ```sh
-curl -sS 'localhost:8787/search?q=confidential%20information&limit=3'
+curl -sS 'localhost:8787/search?q=confidential%20information&limit=1&expand=false'
 ```
 
 ```json
@@ -233,9 +331,17 @@ curl -sS 'localhost:8787/search?q=confidential%20information&limit=3'
         { "start": 21, "end": 32 }
       ],
       "matchedTerms": ["confidential", "information"],
-      "score": 5.1223
+      "score": 5.0988,
+      "stale": false
     }
-  ]
+  ],
+  "documents": [
+    { "docId": "mutual-nda", "title": "Mutual Non-Disclosure Agreement", "passages": 15 },
+    { "docId": "employment-agreement", "title": "Employment Agreement", "passages": 5 },
+    { "docId": "saas-msa", "title": "SaaS Master Services Agreement", "passages": 4 },
+    { "docId": "commercial-lease", "title": "Commercial Lease Agreement", "passages": 4 }
+  ],
+  "indexing": []
 }
 ```
 
@@ -243,6 +349,9 @@ curl -sS 'localhost:8787/search?q=confidential%20information&limit=3'
 `highlights` are offsets into the snippet. `matchedTerms` lists the query and expansion terms
 found in the passage (words inside a quoted phrase are highlighted but not listed).
 `expansion.status` is `applied` (with the `added` terms), `skipped` (with a `reason`) or `off`.
+`documents` counts the matching passages per document, across all pages. `indexing` lists
+documents whose latest edit is still being reindexed, and `stale: true` marks a hit from such
+a document's previous version (see [Reindexing](#how-it-works)).
 
 ### `POST /documents/:id/suggestions`
 
@@ -340,12 +449,13 @@ Code in `api/src/search/`.
    `{start, end}` ranges relative to the snippet.
 8. **Reindexing.** Documents are indexed as per-document segments. A created document is
    indexed at once. An edited document is rebuilt in a `worker_threads` worker
-   (`SEARCH_INDEX_WORKER`, falls back to in-process) and swapped in (about 30 ms at 10 MB);
+   (`SEARCH_INDEX_WORKER`, falls back to in-process); the rebuild takes about a second at
+   10 MB, off the request path, and the swap about 20–30 ms;
    repeated edits coalesce and a late result never replaces a newer one. **Search never
    waits:** responses list `indexing: [{docId, title, indexedVersion, currentVersion}]` for
    documents still being rebuilt and mark each hit `stale`, and the UI shows "Updating …"
    and re-queries every 500 ms until the index is current. Measured on 10 MB: a search
-   during a reindex answers in about 24 ms. Next: incremental reindexing of only the changed
+   during a reindex answers in under 25 ms. Next: incremental reindexing of only the changed
    passages, and streaming late results with server-sent events.
 
 **Complexity.** Building the index is O(n) in document size: one pass to split, one to
@@ -408,17 +518,18 @@ on passages that already matched a term.
 **Measured** on a generated 10 MB contract (seed clauses repeated; 118,563 passages), Node
 24.22 on a 2.0 GHz quad-core Intel Core i5 laptop. Each figure is the range over several runs on a busy development machine.
 
-| Measure                                    | Result         | Source                              |
-| ------------------------------------------ | -------------- | ----------------------------------- |
-| Index build                                | 1,029–1,334 ms | `make bench`                        |
-| Search, median of 20 queries               | 3.9–5.1 ms     | `make bench`                        |
-| Heap used after build and queries          | 151–204 MB     | `make bench`                        |
-| `POST`, `GET` and list of a 10 MB document | 366–415 ms     | `api/test/large-file.large.test.ts` |
-| `PATCH` near the end of a 10 MB document   | 109–144 ms     | `api/test/large-file.large.test.ts` |
-| Index build, in the test                   | 1,302–1,715 ms | `api/test/search.large.test.ts`     |
-| Single queries, in the test                | 1.7–23.9 ms    | `api/test/search.large.test.ts`     |
+| Measure                                    | Result       | Source                              |
+| ------------------------------------------ | ------------ | ----------------------------------- |
+| Index build                                | 821–1,334 ms | `make bench`                        |
+| Search, median of 20 queries               | 2.8–5.1 ms   | `make bench`                        |
+| Heap used after build and queries          | 78–204 MB    | `make bench`                        |
+| `POST`, `GET` and list of a 10 MB document | 366–415 ms   | `api/test/large-file.large.test.ts` |
+| `PATCH` near the end of a 10 MB document   | 109–144 ms   | `api/test/large-file.large.test.ts` |
+| Index build, in the test                   | 538–1,715 ms | `api/test/search.large.test.ts`     |
+| Single queries, in the test                | 0.9–23.9 ms  | `api/test/search.large.test.ts`     |
 
-The first query after a build is the slowest (cold caches); later ones take a few
+Heap used varies with garbage collection, and the postings live in typed arrays that it
+counts only in part, so treat it as a rough figure. The first query after a build is the slowest (cold caches); later ones take a few
 milliseconds. The large tests assert generous ceilings (4 s build, 200 ms per query, 1.5 s
 per PATCH) as tripwires for accidental quadratic work, not as benchmarks.
 
@@ -470,18 +581,24 @@ per PATCH) as tripwires for accidental quadratic work, not as benchmarks.
 ## Observability
 
 Logs are JSON lines on stdout and appended to `data/app.log`: `ts`, `level`, `event`, then
-fields. They carry ids, counts and timings only, never document, passage or query text.
+fields. Every line written while handling a request carries its `reqId`, which is also returned
+as the `x-request-id` header (a safe incoming `x-request-id` is reused). They carry ids, counts and timings only, never document, passage or query text.
 
-| Event             | Fields                                                                          |
-| ----------------- | ------------------------------------------------------------------------------- |
-| `server.start`    | `version`, `port`, `docs` (seeded), `llmMode`                                   |
-| `server.stop`     | `signal`                                                                        |
-| `document.create` | `docId`, `length`                                                               |
-| `doc.patched`     | `docId`, `version`, `changes`, `dryRun`, `ms`                                   |
-| `search.index`    | `docId`, `version`, `reason` (`startup`, `create`, `commit`), `passages`, `ms`  |
-| `search`          | `qLen`, `terms`, `results`, `expansion` (status), `ms`                          |
-| `llm.call`        | `op`, `model`, `inputTokens`, `outputTokens`, `ms`, `replayed`, `status`, `key` |
-| `http.unhandled`  | `requestId` (also the `x-request-id` header), `method`, `route`, `errorName`    |
+| Event                                                              | Fields                                                                                                                                    |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `server.start`                                                     | `version`, `port`, `docs` (seeded), `llmMode`                                                                                             |
+| `server.stop`                                                      | `signal`                                                                                                                                  |
+| `document.create`                                                  | `docId`, `length`                                                                                                                         |
+| `doc.patched`                                                      | `docId`, `version`, `changes`, `dryRun`, `ms`                                                                                             |
+| `http.request`                                                     | `reqId`, `method`, `route` (the pattern, never the raw path), `status`, `ms`                                                              |
+| `search.index`                                                     | `docId`, `version`, `reason` (`startup`, `create`, `commit`), `passages`, `ms`; for a commit also `mode` (`worker`, `sync`) and `queueMs` |
+| `search.index_swap`, `search.index_discard`, `search.index_failed` | `docId`, `version`: a rebuilt index swapped in, a late result dropped, a failed rebuild                                                   |
+| `search.index_worker_*`                                            | the worker failing to start, erroring, or a build falling back to in-process                                                              |
+| `search`                                                           | `reqId`, `qLen`, `terms`, `results`, `expansion` (status), `added`, `indexing`, `ms`                                                      |
+| `llm.call`                                                         | `op`, `model`, `inputTokens`, `outputTokens`, `ms`, `replayed`, `status`, `key`                                                           |
+| `http.unhandled`                                                   | `reqId` (also the `x-request-id` header), `method`, `route`, `errorName`                                                                  |
+| `llm.ledger_unwritable`, `llm.cassette_unwritable`                 | the spend ledger or a recording could not be written (read-only disk)                                                                     |
+| `function.start`                                                   | the Vercel function's cold start: `version`, `docs`, `llmMode`                                                                            |
 
 For example, `grep '"event":"llm.call"' data/app.log` shows every model call and whether it
 was replayed. `make dev` also writes `data/api.log` and `data/web.log`.
@@ -508,12 +625,12 @@ was replayed. `make dev` also writes `data/api.log` and `data/web.log`.
 - **`make coverage`** runs both workspaces' full suites (replay mode, large tests included)
   with v8 coverage over `src/` (tests excluded), prints a summary per workspace, and writes
   HTML and `coverage-summary.json` to `api/coverage/` and `web/coverage/` (git-ignored). It is
-  a measurement; no threshold gates `make check`. Measured at `c92de29`:
+  a measurement; no threshold gates `make check`. Measured at `5afbaf3`:
 
   | Workspace | Lines  | Branches | Functions |
   | --------- | ------ | -------- | --------- |
-  | `api`     | 91.41% | 76.54%   | 93.18%    |
-  | `web`     | 95.27% | 84.45%   | 95.09%    |
+  | `api`     | 91.93% | 78.67%   | 93.79%    |
+  | `web`     | 95.28% | 84.45%   | 95.09%    |
 
 ## Deploy (Vercel)
 
@@ -523,37 +640,17 @@ files and the API bundled into one Node 22 function with the seed contracts and 
 `vercel deploy --prebuilt --prod`. Set these in the Vercel project:
 
 - `ANTHROPIC_API_KEY`
-- `LLM_MODE=record`: replay a recording first, call the API on a miss (nothing is saved)
-- `LLM_MAX_LIVE_CALLS` (default 200): live calls per instance before suggestions return 503
+- `LLM_MODE=record`: replay a recording first, call the API on a miss. The function's disk is
+  read-only, so the result is not saved, and each miss logs `llm.cassette_unwritable`.
+- `LLM_MAX_LIVE_CALLS` (default 200): live calls per instance. Search expansion and
+  suggestions share the count; past it, suggestions return 503 and searches run unexpanded
+  (`cap_reached`). The count resets on each cold start, so the account's spending limit is
+  the backstop across instances.
 
-Documents live in memory per instance and reset on a cold start. Vercel rejects request
+Documents live in memory per instance and reset on a cold start. There is no sign-in: every
+visitor shares one store, and two requests can reach different instances, so an applied edit
+can seem to vanish. That is acceptable for a demonstration, not for client documents. Vercel rejects request
 bodies over 4.5 MB.
-
-## Project layout
-
-```
-api/src/
-  app.ts            createApp(deps): routes, error handling
-  server.ts         Node entry point
-  runtime.ts        Production dependency graph, shared by the server and the evals
-  config.ts         Every tunable and environment variable
-  routes/           documents, search, suggestions (registrars over AppDeps)
-  changes/          resolve targets, apply ops, word-level redline
-  search/           passages, tokenizer, query parser, BM25 index, search service
-  store/            In-memory document store and seed loader
-  llm/              Claude client, record/replay, spend ledger
-  evals/            Scenario runner
-  domain/types.ts   Shared types
-api/seed/           Four synthetic contracts (NDA, SaaS MSA, lease, employment)
-api/fixtures/llm/   LLM recordings
-api/scripts/        evals, spend and bench entry points
-api/test/           Large-file (10 MB+) tests
-scenarios/          Labelled search queries and end-to-end flows
-samples/            requests.sh: a curl sample for every endpoint
-scripts/            smoke, dev, with-keychain
-web/                React 18 + Vite UI
-data/               Logs, pids, ledger, evals output (git-ignored)
-```
 
 ## What's next
 
