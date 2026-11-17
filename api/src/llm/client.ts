@@ -177,6 +177,8 @@ export function createLlmClient(opts: LlmClientOptions = {}): LlmClient {
         status,
         key: key.slice(0, 12),
       });
+    /** Usage of a live response once it has arrived; a refusal or unusable output is billed too. */
+    let billed: TransportResponse["usage"] | undefined;
 
     try {
       if (mode !== "live") {
@@ -201,6 +203,7 @@ export function createLlmClient(opts: LlmClientOptions = {}): LlmClient {
         timeoutMs: input.timeoutMs,
         schema: input.schema,
       });
+      billed = response.usage;
       const cost = costUsd(response.usage, input.model);
       stats.liveCalls++;
       stats.costUsd += cost;
@@ -237,7 +240,7 @@ export function createLlmClient(opts: LlmClientOptions = {}): LlmClient {
       return { output, usage: response.usage, costUsd: cost, replayed: false };
     } catch (err) {
       stats.failedCalls++;
-      done(err instanceof LlmUnavailable ? err.reason : "error", false);
+      done(err instanceof LlmUnavailable ? err.reason : "error", false, billed);
       throw err;
     }
   }
