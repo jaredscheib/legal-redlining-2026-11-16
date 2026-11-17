@@ -73,9 +73,7 @@ export function createWorkerIndexer(
     worker = null;
   };
 
-  const start = async (): Promise<WorkerType | null> => {
-    if (worker) return worker;
-    if (broken) return null;
+  const spawn = async (): Promise<WorkerType | null> => {
     try {
       const { Worker } = await import("node:worker_threads");
       const { url, execArgv } = entry;
@@ -106,6 +104,18 @@ export function createWorkerIndexer(
       });
       return null;
     }
+  };
+
+  // One start at a time: builds that arrive while the worker module loads share it, so no
+  // build is left on an orphaned worker whose crash nothing would report.
+  let starting: Promise<WorkerType | null> | null = null;
+  const start = (): Promise<WorkerType | null> => {
+    if (worker) return Promise.resolve(worker);
+    if (broken) return Promise.resolve(null);
+    starting ??= spawn().finally(() => {
+      starting = null;
+    });
+    return starting;
   };
 
   return {
