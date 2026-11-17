@@ -640,6 +640,9 @@ visitor shares one store, and two requests can reach different instances, so an 
 can seem to vanish. That is acceptable for a demonstration, not for client documents. Vercel rejects request
 bodies over 4.5 MB.
 Compression on Vercel weakens ETags; see the known issue under PATCH ([#38](../../issues/38)).
+On a cold instance the first edit's reindex can take several seconds, longer than the UI keeps
+refreshing, so that edit's search results stay marked as updating until the next search
+([#39](../../issues/39)).
 
 ## What's next
 
