@@ -16,14 +16,15 @@ changes). One user, one process; state lives in memory.
 
 ## Where things are
 
-| Topic                                                                             | Where                                                           |
-| --------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| API reference, errors, design rationale                                           | [docs/api.md](docs/api.md)                                      |
-| Search design, its limits, and measured performance on 10 MB+                     | [docs/search.md](docs/search.md)                                |
-| Configuration, make targets, model cost control, logs, tests and coverage, deploy | [docs/operations.md](docs/operations.md)                        |
-| Decisions with the alternatives weighed, how AI was used, what comes next         | [docs/decisions.md](docs/decisions.md)                          |
-| The plan and decision log; code reviews and what was done about each finding      | issue [#16](../../issues/16); pull request [#19](../../pull/19) |
-| Roadmap                                                                           | issues labelled [`Later`](../../issues?q=label%3ALater)         |
+| Topic                                                                             | Where                                                                             |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| API reference, errors, design rationale                                           | [docs/api.md](docs/api.md)                                                        |
+| Search design, its limits, and measured performance on 10 MB+                     | [docs/search.md](docs/search.md)                                                  |
+| Configuration, make targets, model cost control, logs, tests and coverage, deploy | [docs/operations.md](docs/operations.md)                                          |
+| Decisions with the alternatives weighed, how AI was used, what comes next         | [docs/decisions.md](docs/decisions.md)                                            |
+| Proposed production infrastructure: tiers, architecture, trade-offs (one page)    | [docs/infrastructure.md](docs/infrastructure.md) ([PDF](docs/infrastructure.pdf)) |
+| The plan and decision log; code reviews and what was done about each finding      | issue [#16](../../issues/16); pull request [#19](../../pull/19)                   |
+| Roadmap                                                                           | issues labelled [`Later`](../../issues?q=label%3ALater)                           |
 
 ## Architecture at a glance
 
