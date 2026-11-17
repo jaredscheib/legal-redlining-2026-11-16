@@ -50,7 +50,20 @@ export function onError(err: Error, c: Context): Response {
   return c.json(body, 500);
 }
 
-export function onNotFound(c: Context): Response {
+/**
+ * No handler matched. 405 METHOD_NOT_ALLOWED with an `Allow` header when the path is a known
+ * route under other methods (`allowed`), else 404 ROUTE_NOT_FOUND.
+ */
+export function onNotFound(c: Context, allowed: readonly string[] = []): Response {
+  if (allowed.length > 0) {
+    c.header("Allow", allowed.join(", "));
+    const body: ErrorBody = {
+      error: `${c.req.method} is not allowed here; use ${allowed.join(", ")}`,
+      code: 405,
+      details: { reason: "METHOD_NOT_ALLOWED", allowed: [...allowed] },
+    };
+    return c.json(body, 405);
+  }
   const body: ErrorBody = {
     error: "Route not found",
     code: 404,
