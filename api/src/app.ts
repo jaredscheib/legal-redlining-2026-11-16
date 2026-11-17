@@ -6,7 +6,7 @@ import { registerDocumentRoutes } from "./routes/documents.js";
 import { registerSearchRoutes } from "./routes/search.js";
 import { registerSuggestionRoutes } from "./routes/suggestions.js";
 import type { AppDeps } from "./routes/deps.js";
-import { version } from "./version.js";
+import { version } from "./config.js";
 
 export type { AppDeps };
 
