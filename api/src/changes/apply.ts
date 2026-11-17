@@ -1,11 +1,16 @@
 import type { ChangeOp } from "../domain/types.js";
 import { ApiError } from "../errors.js";
 
+/** An op, optionally tagged with its index in the request's `changes` array. */
+export type IndexedOp = ChangeOp & { changeIndex?: number };
+
 /**
  * Checks that every op lies inside `text`, matches the text it claims to replace, and that no
  * two ops overlap (or share a start). Returns the ops sorted by start. O(k log k + replaced).
+ * OVERLAPPING_CHANGES names both ops' `ranges` in text order and, when ops carry one, their
+ * `changeIndexes` in the same order.
  */
-export function validateOps<T extends ChangeOp>(text: string, ops: readonly T[]): T[] {
+export function validateOps<T extends IndexedOp>(text: string, ops: readonly T[]): T[] {
   for (const op of ops) {
     const inBounds = 0 <= op.start && op.start <= op.end && op.end <= text.length;
     if (!inBounds || text.slice(op.start, op.end) !== op.oldText) {
@@ -20,7 +25,12 @@ export function validateOps<T extends ChangeOp>(text: string, ops: readonly T[])
     const prev = sorted[i - 1] as T;
     const cur = sorted[i] as T;
     if (cur.start < prev.end || cur.start === prev.start) {
+      const changeIndexes =
+        prev.changeIndex !== undefined && cur.changeIndex !== undefined
+          ? { changeIndexes: [prev.changeIndex, cur.changeIndex] }
+          : {};
       throw new ApiError(422, "OVERLAPPING_CHANGES", "changes overlap", {
+        ...changeIndexes,
         ranges: [
           { start: prev.start, end: prev.end },
           { start: cur.start, end: cur.end },
@@ -35,7 +45,7 @@ export function validateOps<T extends ChangeOp>(text: string, ops: readonly T[])
  * Applies ops whose offsets all refer to the original `text`, in one pass: collect the kept
  * slices and replacements, join once. O(n + k log k).
  */
-export function applyOps(text: string, ops: readonly ChangeOp[]): string {
+export function applyOps(text: string, ops: readonly IndexedOp[]): string {
   const sorted = validateOps(text, ops);
   const parts: string[] = [];
   let cursor = 0;

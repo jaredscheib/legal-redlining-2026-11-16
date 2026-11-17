@@ -234,8 +234,9 @@ found in the passage (words inside a quoted phrase are highlighted but not liste
 
 ### `POST /documents/:id/suggestions`
 
-Body `{range: {start, end}, instruction?}`. The range must be non-empty, at most 400
-characters and inside the document (`400 RANGE_OUT_OF_BOUNDS` otherwise); `instruction` is
+Body `{range: {start, end}, instruction?}`. The range must be non-empty and at most 400
+characters (`400 INVALID_PAYLOAD` otherwise) and inside the document
+(`422 RANGE_OUT_OF_BOUNDS` otherwise, as for `PATCH`); `instruction` is
 optional, up to 1000 characters. Returns a proposal and never changes the document; apply it
 with `PATCH`.
 
@@ -260,21 +261,21 @@ Every non-2xx response has the same shape. `code` repeats the HTTP status and
 }
 ```
 
-| Status | `reason`                  | When                                                                                                     |
-| ------ | ------------------------- | -------------------------------------------------------------------------------------------------------- |
-| 400    | `INVALID_PAYLOAD`         | Malformed JSON or a failed validation (`details.issues` has the zod issues), e.g. an empty `target.text` |
-| 400    | `RANGE_OUT_OF_BOUNDS`     | Suggestion range past the end of the document (`details.length`)                                         |
-| 404    | `DOCUMENT_NOT_FOUND`      | Unknown document id, in the path or in `docId`                                                           |
-| 404    | `ROUTE_NOT_FOUND`         | No such route                                                                                            |
-| 422    | `TARGET_NOT_FOUND`        | `target.text` does not occur in the document (`details.changeIndex`)                                     |
-| 422    | `OCCURRENCE_OUT_OF_RANGE` | Fewer occurrences than requested (`details.found`)                                                       |
-| 412    | `VERSION_CONFLICT`        | `If-Match` does not strongly match the current version, or is malformed (`details.currentVersion`)       |
-| 422    | `OVERLAPPING_CHANGES`     | Two changes overlap or start at the same offset                                                          |
-| 422    | `RANGE_OUT_OF_BOUNDS`     | A `range` change outside the document (`details.changeIndex`)                                            |
-| 422    | `EXPECTED_TEXT_MISMATCH`  | A `range` change whose `expectedText` differs (`details.changeIndex`)                                    |
-| 502    | `LLM_ERROR`               | The model answered with unusable output                                                                  |
-| 503    | `LLM_UNAVAILABLE`         | No API key, no recording in replay mode, timeout or API error                                            |
-| 500    | none                      | Unexpected; the body is generic and the `x-request-id` header matches the `http.unhandled` log line      |
+| Status | `reason`                  | When                                                                                                                        |
+| ------ | ------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `INVALID_PAYLOAD`         | Malformed JSON or a failed validation (`details.issues` has the zod issues), e.g. an empty `target.text`                    |
+| 404    | `DOCUMENT_NOT_FOUND`      | Unknown document id, in the path or in `docId`                                                                              |
+| 404    | `ROUTE_NOT_FOUND`         | No such route                                                                                                               |
+| 422    | `TARGET_NOT_FOUND`        | `target.text` does not occur in the document (`details.changeIndex`)                                                        |
+| 422    | `OCCURRENCE_OUT_OF_RANGE` | Fewer occurrences than requested (`details.found`)                                                                          |
+| 412    | `VERSION_CONFLICT`        | `If-Match` does not strongly match the current version, or is malformed (`details.currentVersion`)                          |
+| 422    | `OVERLAPPING_CHANGES`     | Two changes overlap or start at the same offset (`details.changeIndexes` and `details.ranges` of both)                      |
+| 422    | `RANGE_OUT_OF_BOUNDS`     | A `range` change outside the document (`details.changeIndex`), or a suggestion range past its end (`details.length`)        |
+| 422    | `SPLITS_CHARACTER`        | A change would start or end between the two halves of a UTF-16 surrogate pair, e.g. inside an emoji (`details.changeIndex`) |
+| 422    | `EXPECTED_TEXT_MISMATCH`  | A `range` change whose `expectedText` differs (`details.changeIndex`)                                                       |
+| 502    | `LLM_ERROR`               | The model answered with unusable output                                                                                     |
+| 503    | `LLM_UNAVAILABLE`         | No API key, no recording in replay mode, timeout or API error                                                               |
+| 500    | none                      | Unexpected; the body is generic and the `x-request-id` header matches the `http.unhandled` log line                         |
 
 ## Search
 

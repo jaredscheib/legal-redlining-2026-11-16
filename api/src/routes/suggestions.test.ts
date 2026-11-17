@@ -101,6 +101,20 @@ describe("POST /documents/:id/suggestions", () => {
     expect(res.status).toBe(400);
     expect(llm.suggest).not.toHaveBeenCalled();
   });
+
+  it("422s RANGE_OUT_OF_BOUNDS for a range past the end, as PATCH does", async () => {
+    const { app, llm } = setup(async () => ({ replacement: "", rationale: "", model: "" }));
+    const res = await app.request(
+      "/documents/doc/suggestions",
+      post({ start: TEXT.length - 10, end: TEXT.length + 10 }),
+    );
+    expect(res.status).toBe(422);
+    expect((await readJson(res)).details).toEqual({
+      reason: "RANGE_OUT_OF_BOUNDS",
+      length: TEXT.length,
+    });
+    expect(llm.suggest).not.toHaveBeenCalled();
+  });
 });
 
 describe("request id through the LLM path", () => {

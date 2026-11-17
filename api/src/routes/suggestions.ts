@@ -42,7 +42,7 @@ export const registerSuggestionRoutes: Registrar = (app, { store, llm }) => {
     const doc = requireDocument(store, c.req.param("id"));
     const { range, instruction } = c.req.valid("json");
     if (range.end > doc.text.length) {
-      throw new ApiError(400, "RANGE_OUT_OF_BOUNDS", "range is outside the document", {
+      throw new ApiError(422, "RANGE_OUT_OF_BOUNDS", "range is outside the document", {
         length: doc.text.length,
       });
     }
