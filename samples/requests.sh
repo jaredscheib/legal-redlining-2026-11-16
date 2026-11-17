@@ -97,7 +97,7 @@ call GET "/search?q=agreement&limit=2&offset=2"
 echo "# expand=false: never ask Claude for synonyms (expansion.status is \"off\")."
 call GET "/search?q=indemnify&expand=false&limit=3"
 
-echo "# The edit above is searchable at once."
+echo "# The edit above is searchable once its reindex finishes (milliseconds here; \`indexing\` lists a document still being rebuilt)."
 call GET "/search?q=fifteen&docId=$DOC_ID"
 
 echo "== Suggestions"
