@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { captureLogs } from "../../test/capture-logs.js";
 import { createLlmClient, jsonSchemaOf } from "./client.js";
 import { appendLedger, costUsd, readLedger, summarizeLedger } from "./ledger.js";
 import { CassetteStore, canonicalJson, cassetteKey } from "./replay.js";
@@ -198,6 +199,21 @@ describe("createLlmClient modes", () => {
     await expect(client.call(input)).rejects.toMatchObject({ reason: "refusal" });
     expect(readLedger(ledgerPath)).toHaveLength(1);
     expect(fs.existsSync(fixturesDir)).toBe(false);
+  });
+
+  it.each([
+    ["refusal", { text: "", stopReason: "refusal" }],
+    ["invalid_output", { text: '{"nope":1}', stopReason: "end_turn" }],
+  ])("logs the billed tokens of a %s on its llm.call line", async (status, reply) => {
+    const transport = vi.fn<LlmTransport>(async (req) => ({ ...reply, model: req.model, usage }));
+    const client = createLlmClient({ mode: "record", transport, fixturesDir, ledgerPath });
+    const { events } = await captureLogs(() => client.call(input).catch(() => undefined));
+    expect(events.find((e) => e.event === "llm.call")).toMatchObject({
+      status,
+      replayed: false,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+    });
   });
 });
 
