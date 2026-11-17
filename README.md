@@ -31,8 +31,8 @@ changes). One user, one process; state lives in memory.
 - **Sample requests:** `samples/requests.sh` runs one request per route against any base URL.
 - **Decisions:** [docs/decisions.md](docs/decisions.md) records each decision with the
   alternatives weighed, how AI was used, and what comes next. The plan and its decision log are
-  in issue [#16](../../issues/16), each piece of work has its own issue, and the pull requests
-  carry the code reviews and what was done about each finding.
+  in issue [#16](../../issues/16), each piece of work has its own issue, and pull request
+  [#19](../../pull/19) carries the code reviews and what was done about each finding.
 - **Roadmap:** the issues labelled [`Later`](../../issues?q=label%3ALater), and
   [What's next](#whats-next).
 - **Automation:** the [Make targets](#make-targets), a pre-commit hook, and a CI workflow
@@ -101,9 +101,10 @@ Start everything with `make dev`, then open <http://localhost:5173>.
 
 ## Setup
 
-- Node 22 (see `.nvmrc`). Then `make setup` (runs `npm ci`) and `make hooks` (installs the
+- Node 22 (see `.nvmrc`), bash and make: macOS or Linux, or WSL on Windows. Then `make setup` (runs `npm ci`) and `make hooks` (installs the
   pre-commit hook).
-- `ANTHROPIC_API_KEY` (`sk-ant-...`) as a plain environment variable; see `.env.example`.
+- `ANTHROPIC_API_KEY` (`sk-ant-...`) exported in your shell (`export ANTHROPIC_API_KEY=...`).
+  Nothing reads a `.env` file; `.env.example` only lists the variables.
 - On macOS you can keep the key in the keychain instead:
   `security add-generic-password -s legal-redlining-2026-11-16 -a ANTHROPIC_API_KEY -w`.
   `scripts/with-keychain KEY... -- cmd` exports those keys without printing them and runs
@@ -177,7 +178,7 @@ counts as 2, an accented letter as 1 or 2 depending on normalization).
 ### `GET /healthz`
 
 ```json
-{ "status": "ok", "version": "ced3a03" }
+{ "status": "ok", "version": "v0.1.0 (d1bb838)" }
 ```
 
 ### `GET /documents`
@@ -231,7 +232,9 @@ nothing is stored. Each change targets either
 
 - **text**: `target: {text, occurrence?}`. `occurrence` (1-based, default 1) picks among
   repeated matches, counted left to right without overlaps; exact and case-sensitive.
-- **a range**: `range: {start, end, expectedText?}`, UTF-16 offsets, half-open. A wrong
+- **a range**: `range: {start, end, expectedText?}`, UTF-16 offsets, half-open. The new text
+  is `replacement` in both forms, e.g.
+  `{"operation":"replace","range":{"start":100,"end":108,"expectedText":"30 days"},"replacement":"15 days"}`. A wrong
   `expectedText` is refused (`422 EXPECTED_TEXT_MISMATCH`), which catches stale offsets.
 
 With `dryRun=true` nothing is stored and `version` is unchanged; the redline has one hunk per
@@ -356,8 +359,9 @@ with `PATCH`.
 
 ### Errors
 
-Every non-2xx response has the same shape. `code` repeats the HTTP status and
-`details.reason` is the machine-readable reason:
+Every 4xx response has the same shape. `code` repeats the HTTP status and `details.reason`
+is the machine-readable reason. A 500 is `{"error": "Internal error", "code": 500}`, with no
+`details`:
 
 ```json
 {
@@ -466,6 +470,10 @@ on passages that already matched a term.
 
 - **Resource-oriented REST.** `/documents` is the collection and `/documents/{id}` a
   document; suggestions are a sub-resource. URLs name things, methods say what happens.
+- **Search is its own resource.** `GET /search?q=` spans every document, and `docId` (repeatable)
+  narrows it to one or several, so one route and one response shape cover all three cases.
+  Nested routes (`/documents/{id}/search`) would need a second route for cross-document
+  search, and an action endpoint (`POST /search`) would make a read look like a write.
 - **Reads and writes are separate.** GET never changes state; POST creates; PATCH modifies.
   Caching, retries and logs can rely on that.
 - **PATCH carries change operations, not the whole text.**
@@ -543,7 +551,7 @@ per PATCH) as tripwires for accidental quadratic work, not as benchmarks.
   | `live`   | Always call; save nothing                            | Checking fresh output |
 
   Recordings are `api/fixtures/llm/<sha256>.json`, keyed on the model, system prompt,
-  messages, output schema, `maxTokens` and effort, so any prompt change is a new recording.
+  messages, output schema, `maxTokens`, thinking and effort, so any prompt change is a new recording.
   They contain only synthetic contract text. Commit them so others replay instead of paying.
 
 - **Spend ledger.** Every live call appends its model, token counts and cost to
@@ -639,6 +647,8 @@ Documents live in memory per instance and reset on a cold start. There is no sig
 visitor shares one store, and two requests can reach different instances, so an applied edit
 can seem to vanish. That is acceptable for a demonstration, not for client documents. Vercel rejects request
 bodies over 4.5 MB.
+On Vercel, an unknown path outside `/documents`, `/search` and `/healthz` serves the web page
+(200), not `404 ROUTE_NOT_FOUND`.
 Compression on Vercel weakens ETags; see the known issue under PATCH ([#38](../../issues/38)).
 On a cold instance the first edit's reindex can take several seconds, longer than the UI keeps
 refreshing, so that edit's search results stay marked as updating until the next search
