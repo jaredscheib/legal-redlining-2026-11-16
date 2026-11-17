@@ -242,6 +242,11 @@ unconditional. The UI always sends it. Comparison is strong (RFC 9110 §13.1.1):
 `W/"v<n>"` never matches, and a value that is neither `*` nor quoted tags (`If-Match: v2`, or
 empty) is also a 412, whose `error` says the header is malformed.
 
+**Known issue on the live deploy ([#38](../../issues/38)).** Vercel compresses responses, and
+on a compressed response it rewrites the ETag to `W/"v<n>"`, so echoing that ETag in
+`If-Match` gets a 412. Until that is fixed, send `If-Match: "v<n>"` built from the document's
+`version`, as the UI does, or fetch with `accept-encoding: identity`.
+
 ```sh
 curl -sS -X PATCH 'localhost:8787/documents/saas-msa?dryRun=true' -H 'content-type: application/json' \
   -d '{"changes":[{"operation":"replace","target":{"text":"thirty (30) days"},"replacement":"fifteen (15) days"}]}'
@@ -634,6 +639,7 @@ Documents live in memory per instance and reset on a cold start. There is no sig
 visitor shares one store, and two requests can reach different instances, so an applied edit
 can seem to vanish. That is acceptable for a demonstration, not for client documents. Vercel rejects request
 bodies over 4.5 MB.
+Compression on Vercel weakens ETags; see the known issue under PATCH ([#38](../../issues/38)).
 
 ## What's next
 
