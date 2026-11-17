@@ -47,9 +47,9 @@ export interface ExpanderOptions {
 }
 
 /**
- * Expansion runs with thinking off. Measured on Haiku 5.5 at effort low over five queries
- * (make compare-expansion, 2026-11-16): p50 1618 ms vs 1704 ms adaptive, the same synonyms,
- * and adaptive once spent the 200-token cap on thinking and returned no usable output.
+ * Expansion runs with thinking off: on Haiku 5.5 at effort low it is no slower than adaptive
+ * thinking, gives the same synonyms, and cannot spend the 200-token cap on thinking and return
+ * no usable output. `make compare-expansion` measures both.
  */
 export const EXPANSION_THINKING: Thinking | undefined = "disabled";
 const EXPANSION_MAX_TOKENS = 200;
