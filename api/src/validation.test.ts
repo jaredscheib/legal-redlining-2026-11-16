@@ -31,6 +31,19 @@ describe("issueSummary names the first issue's path and problem", () => {
       "title: must be a string, not number",
     ],
     ["a fraction", z.object({ n: z.number().int() }), { n: 0.5 }, "n: must be an integer"],
+    ["an array for an object", z.object({}), [], "body: must be an object, not an array"],
+    [
+      "a string for an array",
+      z.object({ changes: z.array(z.number()) }),
+      { changes: "x" },
+      "changes: must be an array, not string",
+    ],
+    [
+      "a non-numeric number",
+      z.object({ limit: z.coerce.number() }),
+      { limit: "abc" },
+      "limit: must be a number",
+    ],
     [
       "a long string",
       z.object({ instruction: z.string().max(1000) }),
