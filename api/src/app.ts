@@ -21,7 +21,7 @@ export function createApp(deps: AppDeps): Hono {
   registerSearchRoutes(app, deps);
   registerSuggestionRoutes(app, deps);
 
-  app.notFound(onNotFound);
+  app.notFound((c) => onNotFound(c, allowedMethods(app, c.req.path)));
   app.onError((err, c) => {
     // Hono raises HTTPException for framework-level failures such as malformed JSON.
     if (err instanceof HTTPException && err.status < 500) {
@@ -32,4 +32,28 @@ export function createApp(deps: AppDeps): Hono {
   });
 
   return app;
+}
+
+/** `/documents/:id` as an exact-match RegExp: each `:param` is one non-empty path segment. */
+function pathPattern(routePath: string): RegExp {
+  const source = routePath
+    .split("/")
+    .map((seg) => (seg.startsWith(":") ? "[^/]+" : seg.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
+    .join("/");
+  return new RegExp(`^${source}$`);
+}
+
+/**
+ * The methods registered for `path`, read from the app's own route table so it is the one
+ * source of truth. HEAD is listed wherever GET is, since Hono answers HEAD with the GET route.
+ * Empty when no route matches the path under any method.
+ */
+export function allowedMethods(app: Hono, path: string): string[] {
+  const methods = new Set<string>();
+  for (const route of app.routes) {
+    if (route.method === "ALL") continue; // middleware such as the request id
+    if (pathPattern(route.path).test(path)) methods.add(route.method);
+  }
+  if (methods.has("GET")) methods.add("HEAD");
+  return [...methods].sort();
 }

@@ -92,6 +92,34 @@ describe("errors", () => {
     expectError(await readJson(res), 404, "ROUTE_NOT_FOUND");
   });
 
+  it.each([
+    ["DELETE", "/documents/saas-msa", "GET, HEAD, PATCH"],
+    ["PUT", "/documents/saas-msa", "GET, HEAD, PATCH"],
+    ["GET", "/documents/saas-msa/suggestions", "POST"],
+    ["POST", "/search", "GET, HEAD"],
+    ["DELETE", "/documents", "GET, HEAD, POST"],
+    ["POST", "/healthz", "GET, HEAD"],
+  ])("405s %s %s with METHOD_NOT_ALLOWED and Allow: %s", async (method, path, allow) => {
+    const res = await app.request(path, { method });
+    expect(res.status).toBe(405);
+    expect(res.headers.get("Allow")).toBe(allow);
+    const body = await readJson(res);
+    expectError(body, 405, "METHOD_NOT_ALLOWED");
+    expect(body.details.allowed).toEqual(allow.split(", "));
+    expect(store.get("saas-msa")?.version).toBe(1);
+  });
+
+  it.each([
+    ["GET", "/documents/saas-msa/history"],
+    ["DELETE", "/nope"],
+    ["GET", "/documents/"],
+  ])("still 404s %s %s, an unknown path", async (method, path) => {
+    const res = await app.request(path, { method });
+    expect(res.status).toBe(404);
+    expect(res.headers.get("Allow")).toBeNull();
+    expectError(await readJson(res), 404, "ROUTE_NOT_FOUND");
+  });
+
   it("500s an unexpected throw without leaking the message or stack", async () => {
     const broken = new InMemoryDocumentStore();
     broken.list = () => {
