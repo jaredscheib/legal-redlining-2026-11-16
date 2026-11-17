@@ -30,8 +30,13 @@ export function describeIssue(issue: core.$ZodIssue): string {
       const received = /received (\w+)/.exec(issue.message)?.[1];
       if (received === "undefined") return "is required";
       if (issue.expected === "int" && received === "number") return "must be an integer";
-      const expected = issue.expected === "int" ? "an integer" : `a ${issue.expected}`;
-      return received ? `must be ${expected}, not ${received}` : `must be ${expected}`;
+      const name = issue.expected === "int" ? "integer" : issue.expected;
+      const expected = `${/^[aeiou]/.test(name) ? "an" : "a"} ${name}`;
+      // A query value coerced to a number arrives as NaN when it is not numeric.
+      if (received === "NaN") return `must be ${expected}`;
+      return received
+        ? `must be ${expected}, not ${received === "array" ? "an array" : received}`
+        : `must be ${expected}`;
     }
     case "invalid_value":
       return issue.values.length === 1
