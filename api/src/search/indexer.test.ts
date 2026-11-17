@@ -178,6 +178,32 @@ describe("worker indexer", () => {
     }
   });
 
+  it("builds started in the same tick share one worker, so a crash settles every build", async () => {
+    // Exits on the document "boom"; answers every other build with an error.
+    const source = `import { parentPort } from "node:worker_threads";
+parentPort.on("message", (req) => {
+  if (req.id === "boom") process.exit(1);
+  parentPort.postMessage({ reqId: req.reqId, error: "not_built" });
+});`;
+    const crashing = createWorkerIndexer({
+      url: new URL(`data:text/javascript,${encodeURIComponent(source)}`),
+      execArgv: [],
+    });
+    try {
+      const timeout = new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 3000));
+      const settle = (id: string) =>
+        Promise.race([
+          crashing.build({ id, version: 1, text: "Rent is due." }).then((b) => b.mode),
+          timeout,
+        ]);
+      // Both start before the worker module has loaded: the first build must not be stranded
+      // on a second, orphaned worker.
+      expect(await Promise.all([settle("boom"), settle("other")])).toEqual(["sync", "sync"]);
+    } finally {
+      crashing.close();
+    }
+  });
+
   it("the sync indexer builds the same segment", async () => {
     const text = randomText(7);
     const built = await createSyncIndexer().build({ id: "d", version: 1, text });
